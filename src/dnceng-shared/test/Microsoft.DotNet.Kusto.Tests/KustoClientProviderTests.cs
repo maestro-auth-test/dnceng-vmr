@@ -1,12 +1,12 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
-// See the LICENSE file in the project root for more information.
 
 using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Kusto.Cloud.Platform.Utils;
@@ -34,7 +34,7 @@ public class KustoClientProviderTests
         var properties = new List<ClientRequestProperties>();
         var reader = Mock.Of<IDataReader>();
         queryProvider.Setup(q =>
-                q.ExecuteQueryAsync(Capture.In(dbNames), Capture.In(queries), Capture.In(properties)))
+                q.ExecuteQueryAsync(Capture.In(dbNames), Capture.In(queries), Capture.In(properties), It.IsAny<CancellationToken>()))
             .Returns(Task.FromResult(reader));
             
         using (var client = new KustoClientProvider(MockOptionMonitor.Create(new KustoClientProviderOptions
@@ -59,7 +59,7 @@ public class KustoClientProviderTests
         var properties = new List<ClientRequestProperties>();
         var reader = Mock.Of<IDataReader>();
         queryProvider.Setup(q =>
-                q.ExecuteQueryAsync(Capture.In(dbNames), Capture.In(queries), Capture.In(properties)))
+                q.ExecuteQueryAsync(Capture.In(dbNames), Capture.In(queries), Capture.In(properties), It.IsAny<CancellationToken>()))
             .Returns(Task.FromResult(reader));
 
         using (var client = new KustoClientProvider(MockOptionMonitor.Create(new KustoClientProviderOptions
@@ -86,7 +86,7 @@ public class KustoClientProviderTests
         var properties = new List<ClientRequestProperties>();
         var reader = Mock.Of<IDataReader>();
         queryProvider.Setup(q =>
-                q.ExecuteQueryAsync(Capture.In(dbNames), Capture.In(queries), Capture.In(properties)))
+                q.ExecuteQueryAsync(Capture.In(dbNames), Capture.In(queries), Capture.In(properties), It.IsAny<CancellationToken>()))
             .Returns(Task.FromResult(reader));
 
         using (var client = new KustoClientProvider(MockOptionMonitor.Create(new KustoClientProviderOptions
@@ -132,7 +132,7 @@ public class KustoClientProviderTests
     {
         var queryProvider = new Mock<ICslQueryProvider>();
         queryProvider.Setup(q =>
-                q.ExecuteQueryAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<ClientRequestProperties>()))
+                q.ExecuteQueryAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<ClientRequestProperties>(), It.IsAny<CancellationToken>()))
             .Throws(new FakeSemanticException());
 
         using (var client = new KustoClientProvider(MockOptionMonitor.Create(new KustoClientProviderOptions
@@ -173,7 +173,7 @@ public class KustoClientProviderTests
         };
         var returnDataSet = new ProgressiveDataSet(returnDataSetFrames.GetEnumerator());
         queryProvider.Setup(q =>
-                q.ExecuteQueryV2Async(Capture.In(dbNames), Capture.In(queries), Capture.In(properties)))
+                q.ExecuteQueryV2Async(Capture.In(dbNames), Capture.In(queries), Capture.In(properties), It.IsAny<CancellationToken>()))
             .Returns(Task.FromResult(returnDataSet));
 
         using (var client = new KustoClientProvider(MockOptionMonitor.Create(new KustoClientProviderOptions
@@ -232,7 +232,7 @@ public class KustoClientProviderTests
         };
         var returnDataSet = new ProgressiveDataSet(returnDataSetFrames.GetEnumerator());
         queryProvider.Setup(q =>
-                q.ExecuteQueryV2Async(Capture.In(dbNames), Capture.In(queries), Capture.In(properties)))
+                q.ExecuteQueryV2Async(Capture.In(dbNames), Capture.In(queries), Capture.In(properties), It.IsAny<CancellationToken>()))
             .Returns(Task.FromResult(returnDataSet));
 
         using (var client = new KustoClientProvider(MockOptionMonitor.Create(new KustoClientProviderOptions
@@ -244,7 +244,7 @@ public class KustoClientProviderTests
             query.AddParameter("_name", "TEST-NAME", KustoDataType.String);
 
             Func<Task> act = async () => await client.ExecuteStreamableKustoQuery(query).ToListAsync();
-            act.Should().Throw<ArgumentException>();
+            act.Should().ThrowAsync<ArgumentException>();
         }
     }
 }

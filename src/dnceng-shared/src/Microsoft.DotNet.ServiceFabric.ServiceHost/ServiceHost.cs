@@ -64,7 +64,7 @@ public partial class ServiceHost
 
     private readonly List<Func<Task>> _serviceCallbacks = new List<Func<Task>>();
 
-    private ServiceHost()
+    protected ServiceHost()
     {
     }
 
@@ -72,6 +72,12 @@ public partial class ServiceHost
     ///     Configure and run a new ServiceHost
     /// </summary>
     public static void Run(Action<ServiceHost> configure)
+    {
+        var host = new ServiceHost();
+        host.InternalRun(configure);
+    }
+
+    protected void InternalRun(Action<ServiceHost> configure)
     {
         // Because of this issue, the activity tracking causes
         // arbitrarily HttpClient calls to crash, so disable it until
@@ -84,7 +90,7 @@ public partial class ServiceHost
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
             ServicePointManager.CheckCertificateRevocationList = true;
             JsonConvert.DefaultSettings =
-                () => new JsonSerializerSettings {TypeNameHandling = TypeNameHandling.None};
+                () => new JsonSerializerSettings { TypeNameHandling = TypeNameHandling.None };
             var loggingServices = new ServiceCollection();
             ConfigureLoggingServices(loggingServices);
             using var loggingServiceProvider = loggingServices.BuildServiceProvider();
@@ -102,9 +108,8 @@ public partial class ServiceHost
                     "Microsoft-AspNetCore-Server-Kestrel",
                     // dotnet sources
                     "System.Data.DataCommonEventSource");
-                var host = new ServiceHost();
-                configure(host);
-                host.Start();
+                configure(this);
+                Start();
                 packageActivationContext.ReportDeployedServicePackageHealth(
                     new HealthInformation("ServiceHost", "ServiceHost.Run", HealthState.Ok));
                 Thread.Sleep(Timeout.Infinite);
@@ -128,7 +133,7 @@ public partial class ServiceHost
                 {
                     Description = $"Unhandled Exception: {ex}"
                 },
-                new HealthReportSendOptions {Immediate = true});
+                new HealthReportSendOptions { Immediate = true });
             Thread.Sleep(5000);
             Environment.Exit(-1);
         }
@@ -140,7 +145,7 @@ public partial class ServiceHost
         return this;
     }
 
-    private void ApplyConfigurationToServices(IServiceCollection services)
+    protected void ApplyConfigurationToServices(IServiceCollection services)
     {
         foreach (Action<IServiceCollection> act in _configureServicesActions)
         {
@@ -148,7 +153,7 @@ public partial class ServiceHost
         }
     }
 
-    private void RegisterStatelessService<TService>(
+    protected void RegisterStatelessService<TService>(
         string serviceTypeName,
         Func<StatelessServiceContext, TService> ctor) where TService : StatelessService
     {
@@ -239,7 +244,7 @@ public partial class ServiceHost
         return ConfigureServices(builder => builder.AddScoped<TActor>());
     }
 
-    public ServiceHost RegisterStatelessWebService<TStartup>(string serviceTypeName, Action<IWebHostBuilder> configureWebHost = null) where TStartup : class
+    public virtual ServiceHost RegisterStatelessWebService<TStartup>(string serviceTypeName, Action<IWebHostBuilder> configureWebHost = null) where TStartup : class
     {
         RegisterStatelessService(
             serviceTypeName,

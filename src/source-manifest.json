@@ -7,7 +7,7 @@
       "commitSha": "27ea5bc37537f1c90865d36157efee67a259f043"
     },
     {
-      "packageVersion": null,
+      "packageVersion": "1.1.0-beta.23565.1",
       "path": "dnceng",
       "remoteUri": "https://github.com/dotnet/dnceng",
       "commitSha": "ecbbe4d2600067b73aa5f7ccad6d80dbd8ebfcf1"
@@ -16,7 +16,7 @@
       "packageVersion": null,
       "path": "dnceng-shared",
       "remoteUri": "https://github.com/dotnet/dnceng-shared",
-      "commitSha": "d02a43515be862028d6213ea9951636645831c8c"
+      "commitSha": "8f837017ac05ea8638e247a5866e57402f439a1b"
     }
   ],
   "submodules": []
