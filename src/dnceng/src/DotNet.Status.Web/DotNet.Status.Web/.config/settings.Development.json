@@ -1,0 +1,71 @@
+{
+  "KeyVaultUri": "https://DotNetEng-Status-Local.vault.azure.net/",
+  "HealthTableUri": "",
+  "Logging": {
+    "LogLevel": {
+      "Default": "Debug",
+      "System": "Information",
+      "Microsoft": "Information"
+    }
+  },
+  "ApplicationInsights": {
+    "DeveloperMode": true,
+    "ConnectionString": ""
+  },
+  "BuildMonitor": {
+    "Monitor": {
+      "Builds": [
+      ]
+    },
+    "Issues": {
+      "Owner": "maestro-auth-test",
+      "Name": "status-test"
+    }
+  },
+  "WebHooks": {
+    "github": {
+      "SecretKey": {
+        "default": "[vault(github-app-webhook-secret)]"
+      }
+    }
+  },
+  "MilestoneManagement": {
+    "ReposEnabledFor": [ "maestro-auth-test/webhook-test" ]
+  },
+  "AzureTableTokenStore": {
+    "TableUri": ""
+  },
+  "GitHub": {
+    "TitlePrefix": "LOCAL DEV - "
+  },
+  "DataProtection": {
+    "StorageAccountConnectionString": "",
+    "KeyIdentifier": ""
+  },
+  "Grafana": {
+    "TableUri": ""
+  },
+  "Kusto": {
+    "QueryConnectionString": ""
+  },
+  "IssueMentionForwarding": {
+    "TeamsWebHookUri": ""
+  },
+  "AzureDevOps": {
+    "build-monitor/dnceng": {
+      "Organization": "dnceng",
+      "AccessToken": "",
+      "MaxParallelRequests": 10
+    },
+    "dnceng": {
+      "Organization": "dnceng",
+      "AccessToken": "",
+      "MaxParallelRequests": 10
+    },
+    "dnceng-public": {
+      "Organization": "dnceng-public",
+      "AccessToken": "",
+      "MaxParallelRequests": 10
+    }
+  }
+}

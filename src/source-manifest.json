@@ -2,6 +2,12 @@
   "repositories": [
     {
       "packageVersion": null,
+      "path": "dnceng",
+      "remoteUri": "https://github.com/dotnet/dnceng",
+      "commitSha": "c2153d00516686e61dc8a0c1c3e2fb993f327231"
+    },
+    {
+      "packageVersion": null,
       "path": "dnceng-shared",
       "remoteUri": "https://github.com/dotnet/dnceng-shared",
       "commitSha": "d02a43515be862028d6213ea9951636645831c8c"
