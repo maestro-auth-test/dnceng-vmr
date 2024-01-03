@@ -1,0 +1,34 @@
+// More details on this file's mechanics:
+// https://github.com/dotnet/arcade/blob/main/Documentation/UnifiedBuild/VMR-Design-And-Operation.md#repository-source-mappings
+{
+    "defaults": {
+        "defaultRef": "main",
+        "exclude": [
+            "**/*.dll",
+            "**/*.Dll",
+            "**/*.exe",
+            "**/*.mdb",
+            "**/*.nupkg",
+            "**/*.pdb",
+            "**/*.tgz",
+            "**/*.zip"
+        ]
+    },
+    "mappings": [
+        {
+            "name": "arcade-services",
+            "defaultRemote": "https://github.com/dotnet/arcade-services",
+            "exclude": [
+                "src/Maestro/Maestro.Web"
+            ]
+        },
+        {
+            "name": "dnceng",
+            "defaultRemote": "https://github.com/dotnet/dnceng"
+        },
+        {
+            "name": "dnceng-shared",
+            "defaultRemote": "https://github.com/dotnet/dnceng-shared"
+        }
+    ]
+}
