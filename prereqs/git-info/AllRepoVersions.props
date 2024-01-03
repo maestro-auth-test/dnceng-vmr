@@ -1,6 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project>
   <PropertyGroup>
+    <arcadeservicesGitCommitHash>cc00094be5b1ebfaf92a7519fd23bd08648d10e3</arcadeservicesGitCommitHash>
     <dncengGitCommitHash>c2153d00516686e61dc8a0c1c3e2fb993f327231</dncengGitCommitHash>
     <dncengsharedGitCommitHash>d02a43515be862028d6213ea9951636645831c8c</dncengsharedGitCommitHash>
   </PropertyGroup>
