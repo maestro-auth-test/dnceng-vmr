@@ -13,7 +13,7 @@
       "commitSha": "ecbbe4d2600067b73aa5f7ccad6d80dbd8ebfcf1"
     },
     {
-      "packageVersion": null,
+      "packageVersion": "1.1.0-beta.23523.2",
       "path": "dnceng-shared",
       "remoteUri": "https://github.com/dotnet/dnceng-shared",
       "commitSha": "8f837017ac05ea8638e247a5866e57402f439a1b"
