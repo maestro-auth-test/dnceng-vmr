@@ -1,0 +1,11 @@
+{
+  "repositories": [
+    {
+      "packageVersion": null,
+      "path": "dnceng-shared",
+      "remoteUri": "https://github.com/dotnet/dnceng-shared",
+      "commitSha": "d02a43515be862028d6213ea9951636645831c8c"
+    }
+  ],
+  "submodules": []
+}
