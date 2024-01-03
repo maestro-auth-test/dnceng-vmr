@@ -11,7 +11,8 @@
             "**/*.nupkg",
             "**/*.pdb",
             "**/*.tgz",
-            "**/*.zip"
+            "**/*.zip",
+            "NuGet.config"
         ]
     },
     "mappings": [
@@ -24,7 +25,10 @@
         },
         {
             "name": "dnceng",
-            "defaultRemote": "https://github.com/dotnet/dnceng"
+            "defaultRemote": "https://github.com/dotnet/dnceng",
+            "exclude": [
+                ".vault-config"
+            ]
         },
         {
             "name": "dnceng-shared",
