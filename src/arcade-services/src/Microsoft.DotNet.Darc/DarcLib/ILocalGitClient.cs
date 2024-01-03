@@ -106,16 +106,9 @@ public interface ILocalGitClient
     /// <summary>
     ///     Gets the commit SHA representing given reference (branch, shortened SHA, tag, ...).
     /// </summary>
-    /// <param name="repoPath">Path to a git repository</param>
+    /// <param name="repoPath">Path to a git repository (cwd used when null)</param>
     /// <param name="gitRef">Git reference to resolve or HEAD when null</param>
     Task<string> GetShaForRefAsync(string repoPath, string gitRef);
-
-    /// <summary>
-    ///     Gets the type of a git object (e.g. commit, tree..).
-    /// </summary>
-    /// <param name="repoPath">Path to a git repository</param>
-    /// <param name="objectSha">SHA of the object</param>
-    Task<string> GetObjectTypeAsync(string repoPath, string objectSha);
 
     /// <summary>
     ///     Returns a list of modified staged files.
@@ -133,11 +126,4 @@ public interface ILocalGitClient
         string repoPath,
         IEnumerable<string> pathsToStage,
         CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Add the authorization header to the git command line arguments and environment variables.
-    /// </summary>
-    /// <param name="args">Where to add the new argument into</param>
-    /// <param name="envVars">Where to add the new variables into</param>
-    public void AddGitAuthHeader(IList<string> args, IDictionary<string, string> envVars, string repoUri);
 }

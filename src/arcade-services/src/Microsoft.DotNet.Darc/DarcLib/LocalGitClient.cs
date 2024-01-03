@@ -5,12 +5,12 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.DotNet.DarcLib.Helpers;
 using Microsoft.Extensions.Logging;
+using Microsoft.TeamFoundation.SourceControl.WebApi;
 
 #nullable enable
 namespace Microsoft.DotNet.DarcLib;
@@ -25,6 +25,10 @@ public class LocalGitClient : ILocalGitClient
     private readonly IProcessManager _processManager;
     private readonly ILogger _logger;
 
+    /// <summary>
+    ///     Construct a new local git client
+    /// </summary>
+    /// <param name="path">Current path</param>
     public LocalGitClient(RemoteConfiguration remoteConfiguration, IProcessManager processManager, ILogger logger)
     {
         _remoteConfiguration = remoteConfiguration;
@@ -34,7 +38,7 @@ public class LocalGitClient : ILocalGitClient
 
     public async Task<string> GetFileContentsAsync(string relativeFilePath, string repoPath, string branch)
     {
-        string fullPath = new NativePath(repoPath) / relativeFilePath;
+        string fullPath = Path.Combine(repoPath, relativeFilePath);
         if (!Directory.Exists(Path.GetDirectoryName(fullPath)))
         {
             string? parentTwoDirectoriesUp = Path.GetDirectoryName(Path.GetDirectoryName(fullPath));
@@ -140,21 +144,6 @@ public class LocalGitClient : ILocalGitClient
         return result.StandardOutput.Trim();
     }
 
-    public async Task<string> GetObjectTypeAsync(string repoPath, string objectSha)
-    {
-        var args = new[]
-        {
-            "cat-file",
-            "-t",
-            objectSha,
-        };
-
-        var result = await _processManager.ExecuteGit(repoPath, args);
-        result.ThrowIfFailed($"Failed to find object {objectSha} in {repoPath}");
-
-        return result.StandardOutput.Trim();
-    }
-
     /// <summary>
     ///     Add a remote to a local repo if does not already exist.
     /// </summary>
@@ -197,22 +186,7 @@ public class LocalGitClient : ILocalGitClient
 
     public async Task UpdateRemoteAsync(string repoPath, string remoteName, CancellationToken cancellationToken = default)
     {
-        var result = await _processManager.ExecuteGit(repoPath, new[] { "ls-remote", "--get-url", remoteName }, cancellationToken: cancellationToken);
-        result.ThrowIfFailed($"No remote named {remoteName} in {repoPath}");
-        var remoteUri = result.StandardOutput.Trim();
-
-        List<string> args = [ "remote", "update", remoteName ];
-        var envVars = new Dictionary<string, string>();
-        AddGitAuthHeader(args, envVars, remoteUri);
-
-        result = await _processManager.ExecuteGit(repoPath, args, envVars, cancellationToken: cancellationToken);
-        result.ThrowIfFailed($"Failed to update {repoPath} from remote {remoteName}");
-
-        args = [ "fetch", "--tags", "--force", remoteName ];
-        envVars = new Dictionary<string, string>();
-        AddGitAuthHeader(args, envVars, remoteUri);
-
-        result = await _processManager.ExecuteGit(repoPath, args, envVars, cancellationToken: cancellationToken);
+        var result = await _processManager.ExecuteGit(repoPath, new[] { "remote", "update", remoteName }, cancellationToken: cancellationToken);
         result.ThrowIfFailed($"Failed to update {repoPath} from remote {remoteName}");
     }
 
@@ -348,33 +322,5 @@ public class LocalGitClient : ILocalGitClient
         var result = await _processManager.ExecuteGit(repoPath, args);
         result.ThrowIfFailed($"Failed to blame line {line} of {repoPath}{Path.DirectorySeparatorChar}{relativeFilePath}");
         return result.StandardOutput.Trim().Split(' ').First();
-    }
-
-    public void AddGitAuthHeader(IList<string> args, IDictionary<string, string> envVars, string repoUri)
-    {
-        var token = _remoteConfiguration.GetTokenForUri(repoUri);
-
-        if (token == null)
-        {
-            return;
-        }
-
-        var repoType = GitRepoUrlParser.ParseTypeFromUri(repoUri);
-        if (repoType == GitRepoType.None)
-        {
-            return;
-        }
-
-        const string ENV_VAR_NAME = "GIT_REMOTE_PAT";
-        // Must be before the executed option
-        args.Insert(0, $"--config-env=http.extraheader={ENV_VAR_NAME}");
-        envVars[ENV_VAR_NAME] = repoType switch
-        {
-            GitRepoType.GitHub => $"Authorization: Basic {Convert.ToBase64String(Encoding.UTF8.GetBytes($"{Constants.GitHubBotUserName}:{token}"))}",
-            GitRepoType.AzureDevOps => $"Authorization: Bearer {token}",
-            GitRepoType.Local => token,
-            GitRepoType t => throw new Exception($"Cannot set authorization header for repo of type {t}"),
-        };
-        envVars["GIT_TERMINAL_PROMPT"] = "0";
     }
 }

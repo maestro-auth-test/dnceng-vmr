@@ -23,7 +23,7 @@ public class RemoteConfiguration
 
     public string? GetTokenForUri(string repoUri)
     {
-        var repoType = GitRepoUrlParser.ParseTypeFromUri(repoUri);
+        var repoType = GitRepoTypeParser.ParseFromUri(repoUri);
 
         return repoType switch
         {

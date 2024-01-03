@@ -62,7 +62,7 @@ public class DarcRemoteFactory : IRemoteFactory
             string normalizedUrl = AzureDevOpsClient.NormalizeUrl(repoUrl);
 
             long installationId = await Context.GetInstallationId(normalizedUrl);
-            var repoType = GitRepoUrlParser.ParseTypeFromUri(normalizedUrl);
+            var repoType = GitRepoTypeParser.ParseFromUri(normalizedUrl);
 
             if (repoType == GitRepoType.GitHub && installationId == default)
             {

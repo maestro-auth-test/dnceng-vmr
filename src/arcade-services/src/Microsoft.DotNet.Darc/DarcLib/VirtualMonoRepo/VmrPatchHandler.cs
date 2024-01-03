@@ -291,7 +291,7 @@ public class VmrPatchHandler : IVmrPatchHandler
         args.Add(patch.Path);
 
         var result = await _processManager.ExecuteGit(targetDirectory, args, cancellationToken: CancellationToken.None);
-        result.ThrowIfFailed($"Failed to apply the patch {_fileSystem.GetFileName(patch.Path)} for {patch.ApplicationPath ?? "/"}");
+        result.ThrowIfFailed($"Failed to apply the patch for {patch.ApplicationPath ?? "/"}");
         _logger.LogDebug("{output}", result.ToString());
 
         await ResetWorkingTreeDirectory(targetDirectory, patch.ApplicationPath ?? new UnixPath("."));
@@ -539,7 +539,7 @@ public class VmrPatchHandler : IVmrPatchHandler
         CancellationToken cancellationToken)
     {
         var checkoutCommit = change.Before == Constants.EmptyGitObject ? change.After : change.Before;
-        var clonePath = await _cloneManager.PrepareCloneAsync(change.Url, checkoutCommit, cancellationToken);   
+        var clonePath = await _cloneManager.PrepareClone(change.Url, checkoutCommit, cancellationToken);   
 
         // We are only interested in filters specific to submodule's path
         ImmutableArray<string> GetSubmoduleFilters(IReadOnlyCollection<string> filters)

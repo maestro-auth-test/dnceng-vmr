@@ -64,7 +64,6 @@ public abstract class VmrManagerBase
     protected async Task<IReadOnlyCollection<VmrIngestionPatch>> UpdateRepoToRevisionAsync(
         VmrDependencyUpdate update,
         NativePath clonePath,
-        IReadOnlyCollection<AdditionalRemote> additionalRemotes,
         string fromRevision,
         (string Name, string Email)? author,
         string commitMessage,
@@ -88,7 +87,7 @@ public abstract class VmrManagerBase
         // Get a list of patches that need to be reverted for this update so that repo changes can be applied
         // This includes all patches that are also modified by the current change
         // (happens when we update repo from which the VMR patches come)
-        var vmrPatchesToRestore = await RestoreVmrPatchedFilesAsync(update.Mapping, patches, additionalRemotes, cancellationToken);
+        var vmrPatchesToRestore = await RestoreVmrPatchedFilesAsync(update.Mapping, patches, cancellationToken);
 
         foreach (var patch in patches)
         {
@@ -219,9 +218,8 @@ public abstract class VmrManagerBase
             var remotes = additionalRemotes
                 .Where(r => r.Mapping == repo.Mapping.Name)
                 .Select(r => r.RemoteUri)
-                .Append(repo.RemoteUri)
-                .Prepend(repo.Mapping.DefaultRemote)
-                .OrderBy(GitRepoUrlParser.ParseTypeFromUri, Comparer<GitRepoType>.Create(GitRepoUrlParser.OrderByLocalPublicOther));
+                .Prepend(repo.RemoteUri)
+                .ToArray();
 
             IEnumerable<DependencyDetail>? repoDependencies = null;
             foreach (var remoteUri in remotes)
@@ -318,7 +316,6 @@ public abstract class VmrManagerBase
     protected abstract Task<IReadOnlyCollection<VmrIngestionPatch>> RestoreVmrPatchedFilesAsync(
         SourceMapping mapping,
         IReadOnlyCollection<VmrIngestionPatch> patches,
-        IReadOnlyCollection<AdditionalRemote> additionalRemotes,
         CancellationToken cancellationToken);
 
     /// <summary>

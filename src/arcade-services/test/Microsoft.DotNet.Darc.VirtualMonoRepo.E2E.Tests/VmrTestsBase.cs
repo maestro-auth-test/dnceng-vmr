@@ -82,7 +82,7 @@ public abstract class VmrTestsBase
     protected abstract Task CopyVmrForCurrentTest();
 
     private IServiceProvider CreateServiceProvider() => new ServiceCollection()
-        .AddLogging(b => b.AddConsole().AddFilter(l => l >= LogLevel.Debug))
+        .AddLogging(b => b.AddConsole().AddFilter(l => l >= LogLevel.Information))
         .AddVmrManagers("git", VmrPath, TmpPath, null, null)
         .BuildServiceProvider();
 
@@ -94,8 +94,8 @@ public abstract class VmrTestsBase
         var expectedFiles = new List<LocalPath>
         {
             vmrPath / VmrInfo.GitInfoSourcesDir / AllVersionsPropsFile.FileName,
-            vmrPath / VmrInfo.DefaultRelativeSourceManifestPath,
-            vmrPath / VmrInfo.DefaultRelativeSourceMappingsPath,
+            Info.GetSourceManifestPath(),
+            vmrPath / VmrInfo.SourcesDir / VmrInfo.SourceMappingsFileName
         };
 
         foreach (var repo in syncedRepos)
@@ -136,7 +136,7 @@ public abstract class VmrTestsBase
     protected async Task InitializeRepoAtLastCommit(string repoName, NativePath repoPath, LocalPath? sourceMappingsPath = null)
     {
         var commit = await GitOperations.GetRepoLastCommit(repoPath);
-        var sourceMappings = sourceMappingsPath ?? VmrPath / VmrInfo.DefaultRelativeSourceMappingsPath;
+        var sourceMappings = sourceMappingsPath ?? VmrPath / VmrInfo.SourcesDir / VmrInfo.SourceMappingsFileName;
         await CallDarcInitialize(repoName, commit, sourceMappings);
     }
 
@@ -257,7 +257,7 @@ public abstract class VmrTestsBase
             DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault
         };
 
-        File.WriteAllText(VmrPath / VmrInfo.DefaultRelativeSourceMappingsPath,
+        File.WriteAllText(VmrPath / VmrInfo.SourcesDir / VmrInfo.SourceMappingsFileName,
             JsonSerializer.Serialize(sourceMappings, settings));
         
         await GitOperations.CommitAll(VmrPath, "Add source mappings");
