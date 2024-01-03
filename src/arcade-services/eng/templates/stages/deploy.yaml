@@ -1,0 +1,162 @@
+parameters:
+- name: Subscription
+  type: string
+- name: PublishProfile
+  type: string
+  values: [ 'Int', 'Prod' ]
+- name: DeploymentEnvironment
+  type: string
+- name: VariableGroup
+  type: string
+- name: MaestroTestEndpoints
+  type: string
+
+  # --- Secret Variable group requirements ---
+  # build-asset-registry-admin-connection-string
+  # scenario-test-maestro-token
+  # dn-bot-dnceng-build-rw-code-rw-release-rw
+  # maestro-scenario-test-github-token
+  # dotnet-build-bot-dotnet-eng-status-token
+
+stages:
+- template: ./secret-validation.yml
+  parameters:
+    verifyOnly: true
+
+- stage: approval
+  pool: server
+  dependsOn:
+  - build
+  - ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/production')}}:
+    - publish_using_darc
+  jobs:
+  - deployment: approval
+    displayName: deployment approval (conditional)
+    environment: ${{ parameters.DeploymentEnvironment }}
+
+- stage: deploy
+  displayName: Deploy
+  dependsOn:
+  - build
+  - approval
+  variables:
+  - group: ${{ parameters.VariableGroup }}
+  jobs:
+  - job: updateDatabase
+    displayName: Update BuildAssetRegistry database
+    steps:
+    - download: current
+      artifact: ReleaseUtilities
+
+    - task: AzurePowerShell@3
+      displayName: Add firewall rule
+      inputs:
+        azureSubscription: ${{ parameters.Subscription }}
+        ScriptPath: $(Pipeline.Workspace)/ReleaseUtilities/firewall.ps1
+        ScriptArguments: -RuleName UnblockSQLForUpgrade -Add -ConnectionString "$(build-asset-registry-admin-connection-string)"
+        azurePowerShellVersion: LatestVersion
+
+    - powershell: |
+        .\eng\common\build.ps1 -restore -build -projects src\Maestro\Maestro.Data\Maestro.Data.csproj
+        .\.dotnet\dotnet tool restore
+        .\.dotnet\dotnet ef database update                           `
+          --project .\src\Maestro\Maestro.Data\Maestro.Data.csproj    `
+          --msbuildprojectextensionspath .\artifacts\obj\Maestro.Data `
+          --no-build                                                  `
+          --verbose
+      displayName: Entity Framework update
+      env:
+        BUILD_ASSET_REGISTRY_DB_CONNECTION_STRING: $(build-asset-registry-admin-connection-string)
+
+    - task: AzurePowerShell@3
+      displayName: Remove firewall rule
+      inputs:
+        azureSubscription: ${{ parameters.Subscription }}
+        ScriptPath: $(Pipeline.Workspace)/ReleaseUtilities/firewall.ps1
+        ScriptArguments: -RuleName UnblockSQLForUpgrade -Remove -ConnectionString "$(build-asset-registry-admin-connection-string)"
+        azurePowerShellVersion: LatestVersion
+      condition: always()
+
+  - job: deployMaestro
+    displayName: Deploy Maestro
+    timeoutInMinutes: 75
+    dependsOn:
+    - updateDatabase
+    steps:
+    - download: current
+      artifact: MaestroApplication
+    - download: current
+      artifact: ReleaseUtilities
+    - task: AzurePowerShell@5
+      displayName: Deploy Service Fabric Application (Maestro)
+      inputs:
+        azureSubscription: ${{ parameters.Subscription }}
+        scriptType: inlineScript
+        azurePowerShellVersion: LatestVersion
+        inline: |
+          $autoRollBack = $true
+          if ($env:DisableAutoRollBack -eq 'true') {
+            $autoRollBack = $false
+          }
+          if ($env:BUILD_SOURCEBRANCH -eq 'refs/heads/main') {
+            $autoRollBack = $false
+          }
+          eng/deployment/deploy.ps1 -obj $env:BUILD_ARTIFACTSTAGINGDIRECTORY -appPackagePath $env:ApplicationPackage -publishProfile $env:PublishProfilePath -autoRollBack $autoRollBack -location westus2
+      env:
+        PublishProfilePath: $(Pipeline.Workspace)/MaestroApplication/projectartifacts/PublishProfiles/${{ parameters.PublishProfile }}.xml
+        ApplicationPackage: $(Pipeline.Workspace)/MaestroApplication/applicationpackage
+
+- stage: validateDeployment
+  displayName: Validate deployment
+  dependsOn:
+  - deploy
+  variables:
+  - group: ${{ parameters.VariableGroup }}
+  # Secret-Manager-Scenario-Tests provides: secret-manager-scenario-tests-client-secret
+  - group: Secret-Manager-Scenario-Tests
+
+  jobs:
+  - job: scenario
+    displayName: Scenario tests
+    timeoutInMinutes: 100
+    steps:
+    - download: current
+      displayName: Download Darc
+      artifact: PackageArtifacts
+    - download: current
+      displayName: Download ScenarioTets
+      artifact: Maestro.ScenarioTests
+
+    - task: NuGetToolInstaller@1
+      displayName: Use NuGet
+      inputs:
+        versionSpec: 5.3.x
+
+    - powershell: .\eng\common\build.ps1 -restore
+      displayName: Install .NET
+
+    - task: VSTest@2
+      displayName: Maestro Scenario Tests
+      inputs:
+        testSelector: testAssemblies
+        testAssemblyVer2: |
+          Maestro.ScenarioTests.dll
+        searchFolder: $(Pipeline.Workspace)/Maestro.ScenarioTests
+      env:
+        MAESTRO_BASEURIS: ${{ parameters.MaestroTestEndpoints }}
+        MAESTRO_TOKEN: $(scenario-test-maestro-token)
+        GITHUB_TOKEN: $(maestro-scenario-test-github-token)
+        AZDO_TOKEN: $(dn-bot-dnceng-build-rw-code-rw-release-rw)
+        DARC_PACKAGE_SOURCE: $(Pipeline.Workspace)\PackageArtifacts
+
+    - powershell: |
+        nuget sources add -Name "arcade" -Source "https://dotnetfeed.blob.core.windows.net/dotnet-tools-internal/index.json"
+        nuget sources add -Name "dotnet-core" -Source "https://dotnetfeed.blob.core.windows.net/dotnet-core/index.json"
+      displayName: Add nuget Sources
+    - powershell: $(Build.SourcesDirectory)\eng\get-darc-version.ps1
+        -maestroTestEndpoints "${{ parameters.MaestroTestEndpoints }}"
+        -apiVersion "2019-01-16"
+      displayName: Get DARC version
+
+
+
