@@ -1,0 +1,20 @@
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+
+using System.Threading.Tasks;
+
+namespace Microsoft.DotNet.GitHub.Authentication;
+
+public interface IInstallationLookup
+{
+    Task<long> GetInstallationId(string repositoryUrl);
+    Task<bool> IsOrganizationSupported(string org);
+}
+
+public static class InstallationLookup
+{
+    public static Task<long> GetInstallationId(this IInstallationLookup lookup, string organization, string repository)
+    {
+        return lookup.GetInstallationId(GitHubHelper.GetRepositoryUrl(organization, repository));
+    }
+}
