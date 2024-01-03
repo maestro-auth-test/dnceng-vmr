@@ -1,7 +1,7 @@
 {
   "repositories": [
     {
-      "packageVersion": null,
+      "packageVersion": "1.1.0-beta.23566.3",
       "path": "arcade-services",
       "remoteUri": "https://github.com/dotnet/arcade-services",
       "commitSha": "27ea5bc37537f1c90865d36157efee67a259f043"
@@ -10,7 +10,7 @@
       "packageVersion": null,
       "path": "dnceng",
       "remoteUri": "https://github.com/dotnet/dnceng",
-      "commitSha": "c2153d00516686e61dc8a0c1c3e2fb993f327231"
+      "commitSha": "ecbbe4d2600067b73aa5f7ccad6d80dbd8ebfcf1"
     },
     {
       "packageVersion": null,

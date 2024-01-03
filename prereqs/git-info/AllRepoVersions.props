@@ -2,7 +2,8 @@
 <Project>
   <PropertyGroup>
     <arcadeservicesGitCommitHash>27ea5bc37537f1c90865d36157efee67a259f043</arcadeservicesGitCommitHash>
-    <dncengGitCommitHash>c2153d00516686e61dc8a0c1c3e2fb993f327231</dncengGitCommitHash>
+    <arcadeservicesOutputPackageVersion>1.1.0-beta.23566.3</arcadeservicesOutputPackageVersion>
+    <dncengGitCommitHash>ecbbe4d2600067b73aa5f7ccad6d80dbd8ebfcf1</dncengGitCommitHash>
     <dncengsharedGitCommitHash>d02a43515be862028d6213ea9951636645831c8c</dncengsharedGitCommitHash>
   </PropertyGroup>
 </Project>
