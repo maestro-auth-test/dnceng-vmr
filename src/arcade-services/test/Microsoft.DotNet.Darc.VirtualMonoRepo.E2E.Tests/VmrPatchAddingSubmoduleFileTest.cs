@@ -14,7 +14,7 @@ using NUnit.Framework;
 namespace Microsoft.DotNet.Darc.Tests.VirtualMonoRepo;
 
 [TestFixture]
-public class VmrPatchAddingSubmoduleFileTest : VmrPatchesTestsBase
+internal class VmrPatchAddingSubmoduleFileTest : VmrPatchesTestsBase
 {
     public VmrPatchAddingSubmoduleFileTest() : base("add-submodule-file.patch")
     {
@@ -22,7 +22,7 @@ public class VmrPatchAddingSubmoduleFileTest : VmrPatchesTestsBase
     protected override async Task CopyReposForCurrentTest()
     {
         await base.CopyReposForCurrentTest();
-        await CopyRepoAndCreateVersionDetails(CurrentTestDirectory, Constants.SecondRepoName);
+        await CopyRepoAndCreateVersionFiles(Constants.SecondRepoName);
     }
 
     [Test]
@@ -48,19 +48,19 @@ public class VmrPatchAddingSubmoduleFileTest : VmrPatchesTestsBase
         await InitializeRepoAtLastCommit(Constants.InstallerRepoName, InstallerRepoPath);
         await InitializeRepoAtLastCommit(Constants.ProductRepoName, ProductRepoPath);
 
-        var expectedFilesFromRepos = new List<LocalPath>
-        {
+        List<NativePath> expectedFilesFromRepos =
+        [
             ProductRepoFilePathInVmr,
             submoduleFileInVmr,
-            submodulePathInVmr / VersionFiles.VersionDetailsXml,
+            .. GetExpectedVersionFiles(submodulePathInVmr),
             InstallerFilePathInVmr,
             patchPathInVmr,
             patchedSubmoduleFileInVmr,
-        };
+        ];
 
         var expectedFiles = GetExpectedFilesInVmr(
             VmrPath,
-            new[] { Constants.ProductRepoName, Constants.InstallerRepoName },
+            [Constants.ProductRepoName, Constants.InstallerRepoName],
             expectedFilesFromRepos
         );
 

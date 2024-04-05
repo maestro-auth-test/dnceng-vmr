@@ -1,23 +1,23 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using Microsoft.DotNet.Darc.Helpers;
-using Microsoft.DotNet.Darc.Options;
-using Microsoft.DotNet.DarcLib;
-using Microsoft.DotNet.Maestro.Client.Models;
-using Microsoft.Extensions.Logging;
 using System;
-using System.Net;
-using System.Threading.Tasks;
-using Microsoft.DotNet.Maestro.Client;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
+using System.Threading.Tasks;
+using Microsoft.DotNet.Darc.Options;
+using Microsoft.DotNet.DarcLib;
+using Microsoft.DotNet.Maestro.Client;
+using Microsoft.DotNet.Maestro.Client.Models;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Microsoft.DotNet.Darc.Operations;
 
 internal class DeleteSubscriptionsOperation : Operation
 {
-    DeleteSubscriptionsCommandLineOptions _options;
+    private readonly DeleteSubscriptionsCommandLineOptions _options;
     public DeleteSubscriptionsOperation(DeleteSubscriptionsCommandLineOptions options)
         : base(options)
     {
@@ -28,17 +28,17 @@ internal class DeleteSubscriptionsOperation : Operation
     {
         try
         {
-            IRemote remote = RemoteFactory.GetBarOnlyRemote(_options, Logger);
+            IBarApiClient barClient = Provider.GetRequiredService<IBarApiClient>();
 
             bool noConfirm = _options.NoConfirmation;
-            List<Subscription> subscriptionsToDelete = new List<Subscription>();
+            List<Subscription> subscriptionsToDelete = [];
 
             if (!string.IsNullOrEmpty(_options.Id))
             {
                 // Look up subscription so we can print it later.
                 try
                 {
-                    Subscription subscription = await remote.GetSubscriptionAsync(_options.Id);
+                    Subscription subscription = await barClient.GetSubscriptionAsync(_options.Id);
                     subscriptionsToDelete.Add(subscription);
                 }
                 catch (RestApiException e) when (e.Response.Status == (int) HttpStatusCode.NotFound)
@@ -55,7 +55,7 @@ internal class DeleteSubscriptionsOperation : Operation
                     return Constants.ErrorCode;
                 }
 
-                IEnumerable<Subscription> subscriptions = await _options.FilterSubscriptions(remote);
+                IEnumerable<Subscription> subscriptions = await _options.FilterSubscriptions(barClient);
 
                 if (!subscriptions.Any())
                 {
@@ -90,7 +90,7 @@ internal class DeleteSubscriptionsOperation : Operation
                 {
                     Console.WriteLine($"  {UxHelpers.GetSubscriptionDescription(subscription)}");
                 }
-                await remote.DeleteSubscriptionAsync(subscription.Id.ToString());
+                await barClient.DeleteSubscriptionAsync(subscription.Id);
             }
             Console.WriteLine("done");
 
