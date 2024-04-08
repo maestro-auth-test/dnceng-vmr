@@ -1,22 +1,22 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using Microsoft.DotNet.Darc.Helpers;
-using Microsoft.DotNet.Darc.Options;
-using Microsoft.DotNet.DarcLib;
-using Microsoft.DotNet.Maestro.Client;
-using Microsoft.DotNet.Maestro.Client.Models;
-using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.DotNet.Darc.Options;
+using Microsoft.DotNet.DarcLib;
+using Microsoft.DotNet.Maestro.Client;
+using Microsoft.DotNet.Maestro.Client.Models;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Microsoft.DotNet.Darc.Operations;
 
 internal class GetRepositoryMergePoliciesOperation : Operation
 {
-    private GetRepositoryMergePoliciesCommandLineOptions _options;
+    private readonly GetRepositoryMergePoliciesCommandLineOptions _options;
 
     public GetRepositoryMergePoliciesOperation(GetRepositoryMergePoliciesCommandLineOptions options)
         : base(options)
@@ -28,9 +28,9 @@ internal class GetRepositoryMergePoliciesOperation : Operation
     {
         try
         {
-            IRemote remote = RemoteFactory.GetBarOnlyRemote(_options, Logger);
+            IBarApiClient barClient = Provider.GetRequiredService<IBarApiClient>();
 
-            IEnumerable<RepositoryBranch> allRepositories = await remote.GetRepositoriesAsync();
+            IEnumerable<RepositoryBranch> allRepositories = await barClient.GetRepositoriesAsync(null, null);
             IEnumerable<RepositoryBranch> filteredRepositories = allRepositories.Where(repositories =>
                 (string.IsNullOrEmpty(_options.Repo) || repositories.Repository.Contains(_options.Repo, StringComparison.OrdinalIgnoreCase)) &&
                 (string.IsNullOrEmpty(_options.Branch) || repositories.Branch.Contains(_options.Branch, StringComparison.OrdinalIgnoreCase)));
@@ -39,9 +39,9 @@ internal class GetRepositoryMergePoliciesOperation : Operation
             // passes --all.
             if (!_options.All)
             {
-                HashSet<string> batchableTargets = (await remote.GetSubscriptionsAsync())
+                HashSet<string> batchableTargets = (await barClient.GetSubscriptionsAsync())
                     .Where(s => s.Policy.Batchable)
-                    .Select<Subscription, string>(s => $"{s.TargetRepository}{s.TargetBranch}")
+                    .Select(s => $"{s.TargetRepository}{s.TargetBranch}")
                     .ToHashSet(StringComparer.OrdinalIgnoreCase);
                 var targetedRepositories = filteredRepositories.Where(r => batchableTargets.Contains($"{r.Repository}{r.Branch}"));
 

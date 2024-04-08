@@ -5,31 +5,62 @@ namespace Microsoft.DotNet.Darc.Tests.VirtualMonoRepo;
 
 public class Constants
 {
-    public static readonly string VersionDetailsTemplate = 
-@"<?xml version=""1.0"" encoding=""utf-8""?>
-<Dependencies>
-    <ProductDependencies>
-        {0}
-    </ProductDependencies>
-    <ToolsetDependencies>
-    </ToolsetDependencies>
-</Dependencies>";
+    public const string VersionDetailsTemplate = """
+        <?xml version="1.0" encoding="utf-8"?>
+        <Dependencies>
+            <ProductDependencies>
+                {0}
+            </ProductDependencies>
+            <ToolsetDependencies>
+            </ToolsetDependencies>
+        </Dependencies>
+        """;
 
-    public static readonly string EmptyVersionDetails = string.Format(VersionDetailsTemplate, string.Empty);
-    
-    public static readonly string DependencyTemplate = 
-@"<Dependency Name=""{0}"" Version=""8.0.0"">
-    <Uri>{1}</Uri>
-    <Sha>{2}</Sha>
-    <SourceBuild RepoName=""{0}"" ManagedOnly=""true"" />
-</Dependency>";
+    public const string DependencyTemplate = """
+        <Dependency Name="{0}" Version="8.0.0">
+            <Uri>{1}</Uri>
+            <Sha>{2}</Sha>
+            <SourceBuild RepoName="{0}" ManagedOnly="true" />
+        </Dependency>
+        """;
 
-    public static readonly string ProductRepoName = "product-repo1";
-    public static readonly string DependencyRepoName = "dependency";
-    public static readonly string SecondRepoName = "product-repo2";
-    public static readonly string InstallerRepoName = "installer";
-    public static readonly string VmrName = "vmr";
-    public static readonly string TmpFolderName = "tmp";
-    public static readonly string PatchesFolderName = "patches";
+    public const string VersionPropsTemplate = """
+        <?xml version="1.0" encoding="utf-8"?>
+        <Project>
+          <PropertyGroup>
+            {0}
+          </PropertyGroup>
+        </Project>
+        """;
+
+    public const string GlobalJsonTemplate = """
+        {
+          "tools": {
+            "dotnet": "9.0.100"
+          }
+        }
+        """;
+
+    public const string NuGetConfigTemplate = """
+        <?xml version="1.0" encoding="utf-8"?>
+        <configuration>
+          <packageSources>
+            <clear />
+            <add key="dotnet-eng" value="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-eng/nuget/v3/index.json" />
+            <add key="dotnet-tools" value="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-tools/nuget/v3/index.json" />
+            <add key="dotnet-public" value="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-public/nuget/v3/index.json" />
+          </packageSources>
+          <disabledPackageSources />
+        </configuration>
+        """;
+
+    public const string ProductRepoName = "product-repo1";
+    public const string DependencyRepoName = "dependency";
+    public const string SecondRepoName = "product-repo2";
+    public const string InstallerRepoName = "installer";
+    public const string VmrName = "vmr";
+    public const string TmpFolderName = "tmp";
+    public const string PatchesFolderName = "patches";
+
     public static string GetRepoFileName(string repoName) => repoName + "-file.txt";
 }
