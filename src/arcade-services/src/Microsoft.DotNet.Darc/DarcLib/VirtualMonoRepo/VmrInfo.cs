@@ -14,12 +14,12 @@ public interface IVmrInfo
     /// <summary>
     /// Path for temporary files (individual repo clones, created patches, etc.)
     /// </summary>
-    NativePath TmpPath { get; }
+    NativePath TmpPath { get; set; }
 
     /// <summary>
     /// Path to the root of the VMR
     /// </summary>
-    NativePath VmrPath { get; }
+    NativePath VmrPath { get; set; }
 
     /// <summary>
     /// Path within the VMR where VMR patches are stored.
@@ -32,6 +32,11 @@ public interface IVmrInfo
     /// Path to the source-mappings.json file
     /// </summary>
     string? SourceMappingsPath { get; set; }
+
+    /// <summary>
+    /// Gets a full path leading to the source manifest JSON file.
+    /// </summary>
+    NativePath SourceManifestPath { get; }
 
     /// <summary>
     /// Additionally mapped directories that are copied to non-src/ locations within the VMR.
@@ -49,11 +54,6 @@ public interface IVmrInfo
     /// Gets a full path leading to sources belonging to a given repo
     /// </summary>
     NativePath GetRepoSourcesPath(string mappingName);
-
-    /// <summary>
-    /// Gets a full path leading to the source manifest JSON file.
-    /// </summary>
-    NativePath GetSourceManifestPath();
 }
 
 public class VmrInfo : IVmrInfo
@@ -69,15 +69,19 @@ public class VmrInfo : IVmrInfo
     public const string KeepAttribute = "vmr-preserve";
     public const string IgnoreAttribute = "vmr-ignore";
 
-    public const string ReadmeFileName = "README.md";
+    public const string ComponentListPath = "Components.md";
     public const string ThirdPartyNoticesFileName = "THIRD-PARTY-NOTICES.txt";
     public const string CodeownersFileName = "CODEOWNERS";
 
     public static UnixPath RelativeSourcesDir { get; } = new("src");
 
-    public NativePath VmrPath { get; }
+    public static UnixPath DefaultRelativeSourceMappingsPath { get; } = RelativeSourcesDir / SourceMappingsFileName;
 
-    public NativePath TmpPath { get; }
+    public static UnixPath DefaultRelativeSourceManifestPath { get; } = RelativeSourcesDir / SourceManifestFileName;
+
+    public NativePath VmrPath { get; set; }
+
+    public NativePath TmpPath { get; set; }
 
     public string? PatchesPath { get; set; }
 
@@ -89,6 +93,7 @@ public class VmrInfo : IVmrInfo
     {
         VmrPath = vmrPath;
         TmpPath = tmpPath;
+        SourceManifestPath = vmrPath / SourcesDir / SourceManifestFileName;
     }
 
     public VmrInfo(string vmrPath, string tmpPath) : this(new NativePath(vmrPath), new NativePath(tmpPath))
@@ -99,7 +104,9 @@ public class VmrInfo : IVmrInfo
 
     public NativePath GetRepoSourcesPath(string mappingName) => VmrPath / SourcesDir / mappingName;
 
-    public static UnixPath GetRelativeRepoSourcesPath(SourceMapping mapping) => RelativeSourcesDir / mapping.Name;
+    public static UnixPath GetRelativeRepoSourcesPath(SourceMapping mapping) => GetRelativeRepoSourcesPath(mapping.Name);
 
-    public NativePath GetSourceManifestPath() => VmrPath / SourcesDir / SourceManifestFileName;
+    public static UnixPath GetRelativeRepoSourcesPath(string mappingName) => RelativeSourcesDir / mappingName;
+
+    public NativePath SourceManifestPath { get; }
 }

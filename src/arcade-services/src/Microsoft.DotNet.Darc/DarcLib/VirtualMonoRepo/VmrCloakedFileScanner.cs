@@ -6,9 +6,7 @@ using Microsoft.DotNet.DarcLib.Helpers;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -33,6 +31,11 @@ public class VmrCloakedFileScanner : VmrScanner
     {
         cancellationToken.ThrowIfCancellationRequested();
 
+        if (sourceMapping.Exclude.Count == 0)
+        {
+            return [];
+        }
+
         var args = new List<string>
         {
             "diff",
@@ -52,7 +55,7 @@ public class VmrCloakedFileScanner : VmrScanner
             args.AddRange(await GetExclusionFilters(sourceMapping.Name, baselineFilePath));
         }
 
-        var ret = await _processManager.ExecuteGit(_vmrInfo.VmrPath, args.ToArray(), cancellationToken: cancellationToken);
+        var ret = await _processManager.ExecuteGit(_vmrInfo.VmrPath, [.. args], cancellationToken: cancellationToken);
 
         ret.ThrowIfFailed($"Failed to scan the {sourceMapping.Name} repository");
 
@@ -61,7 +64,7 @@ public class VmrCloakedFileScanner : VmrScanner
     }
 
     protected override string ScanType { get; } = "cloaked";
-    private string GetCloakedFileFilter(string file) => $":(attr:!{VmrInfo.KeepAttribute}){file}";
+    private static string GetCloakedFileFilter(string file) => $":(attr:!{VmrInfo.KeepAttribute}){file}";
 
     protected override Task<IEnumerable<string>> ScanBaseRepository(string? baselineFilePath, CancellationToken cancellationToken) 
         => Task.FromResult(Enumerable.Empty<string>());

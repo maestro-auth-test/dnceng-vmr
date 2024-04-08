@@ -33,6 +33,7 @@ public static class VmrRegistrations
         services.TryAddTransient<ILogger>(sp => sp.GetRequiredService<ILogger<VmrManagerBase>>());
         services.TryAddTransient<IDependencyFileManager, DependencyFileManager>();
         services.TryAddTransient<IGitRepoFactory, VmrGitClientFactory>();
+        services.TryAddTransient<ILocalGitRepoFactory, LocalGitRepoFactory>();
         services.TryAddTransient<ILocalGitClient, LocalGitClient>();
         services.TryAddTransient<ILocalLibGit2Client, LocalLibGit2Client>();
         services.TryAddTransient<ISourceMappingParser, SourceMappingParser>();
@@ -40,35 +41,40 @@ public static class VmrRegistrations
         services.TryAddTransient<IVmrPatchHandler, VmrPatchHandler>();
         services.TryAddTransient<IVmrUpdater, VmrUpdater>();
         services.TryAddTransient<IVmrInitializer, VmrInitializer>();
-        services.TryAddTransient<IVmrBackflower, CodeBackflower>();
+        services.TryAddTransient<IVmrBackFlower, VmrBackFlower>();
+        services.TryAddTransient<IVmrForwardFlower, VmrForwardFlower>();
         services.TryAddTransient<IVmrRepoVersionResolver, VmrRepoVersionResolver>();
         services.TryAddSingleton<IVmrDependencyTracker, VmrDependencyTracker>();
         services.TryAddTransient<IWorkBranchFactory, WorkBranchFactory>();
         services.TryAddTransient<IThirdPartyNoticesGenerator, ThirdPartyNoticesGenerator>();
-        services.TryAddTransient<IReadmeComponentListGenerator, ReadmeComponentListGenerator>();
+        services.TryAddTransient<IComponentListGenerator, ComponentListGenerator>();
         services.TryAddTransient<ICodeownersGenerator, CodeownersGenerator>();
         services.TryAddTransient<IRepositoryCloneManager, RepositoryCloneManager>();
         services.TryAddTransient<IFileSystem, FileSystem>();
         services.TryAddTransient<IGitRepoCloner, GitNativeRepoCloner>();
         services.TryAddTransient<VmrCloakedFileScanner>();
         services.TryAddTransient<VmrBinaryFileScanner>();
+        services.TryAddTransient<IDependencyFileManager, DependencyFileManager>();
+        services.TryAddTransient<ICoherencyUpdateResolver, CoherencyUpdateResolver>();
+        services.TryAddTransient<IAssetLocationResolver, AssetLocationResolver>();
+
         services.AddHttpClient("GraphQL", httpClient =>
         {
             httpClient.DefaultRequestHeaders.Add(HeaderNames.Accept, "application/json");
             httpClient.DefaultRequestHeaders.Add(HeaderNames.UserAgent, "Darc");
-        }).ConfigureHttpMessageHandlerBuilder(handler =>
+        }).ConfigurePrimaryHttpMessageHandler((handler, service) =>
         {
-            if (handler.PrimaryHandler is HttpClientHandler httpClientHandler)
+            if (handler is HttpClientHandler httpClientHandler)
             {
                 httpClientHandler.CheckCertificateRevocationList = true;
             }
-            else if (handler.PrimaryHandler is SocketsHttpHandler socketsHttpHandler)
+            else if (handler is SocketsHttpHandler socketsHttpHandler)
             {
                 socketsHttpHandler.SslOptions.CertificateRevocationCheckMode = X509RevocationMode.Online;
             }
             else
             {
-                throw new InvalidOperationException($"Could not create client with CRL check, HttpMessageHandler type {handler.PrimaryHandler.GetType().FullName ?? handler.PrimaryHandler.GetType().Name} is unknown.");
+                throw new InvalidOperationException($"Could not create client with CRL check, HttpMessageHandler type {handler.GetType().FullName ?? handler.GetType().Name} is unknown.");
             }
         });
 
@@ -78,7 +84,7 @@ public static class VmrRegistrations
         services.TryAddSingleton<ISourceManifest>(sp =>
         {
             var configuration = sp.GetRequiredService<IVmrInfo>();
-            return SourceManifest.FromJson(configuration.GetSourceManifestPath());
+            return SourceManifest.FromJson(configuration.SourceManifestPath);
         });
 
         return services;

@@ -1,24 +1,25 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.DotNet.Darc.Helpers;
 using Microsoft.DotNet.Darc.Models.PopUps;
 using Microsoft.DotNet.Darc.Options;
 using Microsoft.DotNet.DarcLib;
 using Microsoft.DotNet.Maestro.Client;
 using Microsoft.DotNet.Maestro.Client.Models;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using System;
-using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace Microsoft.DotNet.Darc.Operations;
 
-class UpdateSubscriptionOperation : Operation
+internal class UpdateSubscriptionOperation : Operation
 {
-    readonly UpdateSubscriptionCommandLineOptions _options;
+    private readonly UpdateSubscriptionCommandLineOptions _options;
 
     public UpdateSubscriptionOperation(UpdateSubscriptionCommandLineOptions options)
         : base(options)
@@ -29,17 +30,16 @@ class UpdateSubscriptionOperation : Operation
     /// <summary>
     /// Implements the 'update-subscription' operation
     /// </summary>
-    /// <param name="options"></param>
     public override async Task<int> ExecuteAsync()
     {
-        IRemote remote = RemoteFactory.GetBarOnlyRemote(_options, Logger);
+        IBarApiClient barClient = Provider.GetRequiredService<IBarApiClient>();
 
         // First, try to get the subscription. If it doesn't exist the call will throw and the exception will be
         // caught by `RunOperation`
-        Subscription subscription = await remote.GetSubscriptionAsync(_options.Id);
+        Subscription subscription = await barClient.GetSubscriptionAsync(_options.Id);
 
-        var suggestedRepos = remote.GetSubscriptionsAsync();
-        var suggestedChannels = remote.GetChannelsAsync();
+        var suggestedRepos = barClient.GetSubscriptionsAsync();
+        var suggestedChannels = barClient.GetChannelsAsync();
 
         string channel = subscription.Channel.Name;
         string sourceRepository = subscription.SourceRepository;
@@ -48,7 +48,8 @@ class UpdateSubscriptionOperation : Operation
         bool enabled = subscription.Enabled;
         string failureNotificationTags = subscription.PullRequestFailureNotificationTags;
         List<MergePolicy> mergePolicies;
-
+        bool sourceEnabled = subscription.SourceEnabled;
+        List<string> excludedAssets = [..subscription.ExcludedAssets];
 
         if (UpdatingViaCommandLine())
         {
@@ -81,11 +82,21 @@ class UpdateSubscriptionOperation : Operation
             {
                 failureNotificationTags = _options.FailureNotificationTags;
             }
-            mergePolicies = subscription.Policy.MergePolicies.ToList();
+            mergePolicies = [.. subscription.Policy.MergePolicies];
+
+            if (_options.SourceEnabled.HasValue)
+            {
+                sourceEnabled = _options.SourceEnabled.Value;
+            }
+
+            if (_options.ExcludedAssets != null)
+            {
+                excludedAssets = [.._options.ExcludedAssets.Split(';', StringSplitOptions.RemoveEmptyEntries)];
+            }
         }
         else
         {
-            UpdateSubscriptionPopUp updateSubscriptionPopUp = new UpdateSubscriptionPopUp(
+            var updateSubscriptionPopUp = new UpdateSubscriptionPopUp(
                 "update-subscription/update-subscription-todo",
                 Logger,
                 subscription,
@@ -93,9 +104,11 @@ class UpdateSubscriptionOperation : Operation
                 (await suggestedRepos).SelectMany(subs => new List<string> { subscription.SourceRepository, subscription.TargetRepository }).ToHashSet(),
                 Constants.AvailableFrequencies,
                 Constants.AvailableMergePolicyYamlHelp,
-                subscription.PullRequestFailureNotificationTags ?? string.Empty);
+                subscription.PullRequestFailureNotificationTags ?? string.Empty,
+                sourceEnabled,
+                excludedAssets);
 
-            UxManager uxManager = new UxManager(_options.GitLocation, Logger);
+            var uxManager = new UxManager(_options.GitLocation, Logger);
 
             int exitCode = uxManager.PopUp(updateSubscriptionPopUp);
 
@@ -111,22 +124,34 @@ class UpdateSubscriptionOperation : Operation
             enabled = updateSubscriptionPopUp.Enabled;
             failureNotificationTags = updateSubscriptionPopUp.FailureNotificationTags;
             mergePolicies = updateSubscriptionPopUp.MergePolicies;
+            sourceEnabled = updateSubscriptionPopUp.SourceEnabled;
+            excludedAssets = [..updateSubscriptionPopUp.ExcludedAssets];
         }
+
+        if (excludedAssets.Any() && !sourceEnabled)
+        {
+            Console.WriteLine("Asset exclusion only works for source-enabled subscriptions");
+            return Constants.ErrorCode;
+        }
+
         try
         {
-            SubscriptionUpdate subscriptionToUpdate = new SubscriptionUpdate
+            var subscriptionToUpdate = new SubscriptionUpdate
             {
                 ChannelName = channel ?? subscription.Channel.Name,
                 SourceRepository = sourceRepository ?? subscription.SourceRepository,
                 Enabled = enabled,
                 Policy = subscription.Policy,
-                PullRequestFailureNotificationTags = failureNotificationTags
+                PullRequestFailureNotificationTags = failureNotificationTags,
+                SourceEnabled = sourceEnabled,
+                ExcludedAssets = excludedAssets.ToImmutableList(),
             };
+
             subscriptionToUpdate.Policy.Batchable = batchable;
             subscriptionToUpdate.Policy.UpdateFrequency = Enum.Parse<UpdateFrequency>(updateFrequency, true);
             subscriptionToUpdate.Policy.MergePolicies = mergePolicies?.ToImmutableList();
 
-            var updatedSubscription = await remote.UpdateSubscriptionAsync(
+            var updatedSubscription = await barClient.UpdateSubscriptionAsync(
                 _options.Id,
                 subscriptionToUpdate);
 
@@ -151,7 +176,7 @@ class UpdateSubscriptionOperation : Operation
 
                 if (triggerAutomatically)
                 {
-                    await remote.TriggerSubscriptionAsync(updatedSubscription.Id.ToString());
+                    await barClient.TriggerSubscriptionAsync(updatedSubscription.Id);
                     Console.WriteLine($"Subscription '{updatedSubscription.Id}' triggered.");
                 }
             }
@@ -176,15 +201,15 @@ class UpdateSubscriptionOperation : Operation
         }
     }
 
+    // If any specific values come from the command line, we'll skip the popup.
+    // This enables bulk update for users who have many subscriptions, as the text-editor approach can be slow for them.
     private bool UpdatingViaCommandLine()
-    {
-        // If any specific values come from the command line, we'll skip the popup.
-        // This enables bulk update for users who have many subscriptions, as the text-editor approach can be slow for them.
-        return _options.Channel != null ||
-               _options.SourceRepoUrl != null ||
-               _options.Batchable != null ||
-               _options.UpdateFrequency != null ||
-               _options.Enabled != null || 
-               _options.FailureNotificationTags != null;
-    }
+        => _options.Channel != null
+           || _options.SourceRepoUrl != null
+           || _options.Batchable != null
+           || _options.UpdateFrequency != null
+           || _options.Enabled != null
+           || _options.FailureNotificationTags != null
+           || _options.SourceEnabled != null
+           || _options.ExcludedAssets != null;
 }

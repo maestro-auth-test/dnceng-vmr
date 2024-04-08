@@ -1,22 +1,22 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using Microsoft.DotNet.Darc.Helpers;
-using Microsoft.DotNet.Darc.Options;
-using Microsoft.DotNet.DarcLib;
-using Microsoft.DotNet.Maestro.Client;
-using Microsoft.DotNet.Maestro.Client.Models;
-using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.DotNet.Darc.Options;
+using Microsoft.DotNet.DarcLib;
+using Microsoft.DotNet.Maestro.Client;
+using Microsoft.DotNet.Maestro.Client.Models;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Microsoft.DotNet.Darc.Operations;
 
 internal class GetLatestBuildOperation : Operation
 {
-    GetLatestBuildCommandLineOptions _options;
+    private readonly GetLatestBuildCommandLineOptions _options;
     public GetLatestBuildOperation(GetLatestBuildCommandLineOptions options)
         : base(options)
     {
@@ -31,7 +31,7 @@ internal class GetLatestBuildOperation : Operation
     {
         try
         {
-            IRemote remote = RemoteFactory.GetBarOnlyRemote(_options, Logger);
+            IBarApiClient barClient = Provider.GetRequiredService<IBarApiClient>();
 
             // Calculate out possible repos based on the input strings.
             // Today the DB has no way of searching for builds by substring, so for now
@@ -40,14 +40,14 @@ internal class GetLatestBuildOperation : Operation
             // Then search channels by substring
             // Then run GetLatestBuild for each permutation.
 
-            var subscriptions = await remote.GetSubscriptionsAsync();
+            var subscriptions = await barClient.GetSubscriptionsAsync();
             var possibleRepos = subscriptions
                 .SelectMany(subscription => new List<string> { subscription.SourceRepository, subscription.TargetRepository })
                 .Where(r => r.Contains(_options.Repo, StringComparison.OrdinalIgnoreCase))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
             possibleRepos.Add(_options.Repo);
 
-            var channels = (await remote.GetChannelsAsync())
+            var channels = (await barClient.GetChannelsAsync())
                 .Where(c => string.IsNullOrEmpty(_options.Channel) || c.Name.Contains(_options.Channel, StringComparison.OrdinalIgnoreCase));
 
             if (!channels.Any())
@@ -61,7 +61,7 @@ internal class GetLatestBuildOperation : Operation
             {
                 foreach (Channel channel in channels)
                 {
-                    Build latestBuild = await remote.GetLatestBuildAsync(possibleRepo, channel.Id);
+                    Build latestBuild = await barClient.GetLatestBuildAsync(possibleRepo, channel.Id);
                     if (latestBuild != null)
                     {
                         if (foundBuilds)
