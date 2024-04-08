@@ -10,6 +10,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Xml;
 using Microsoft.DotNet.DarcLib.Helpers;
+using Microsoft.DotNet.DarcLib.Models;
 using Microsoft.DotNet.DarcLib.VirtualMonoRepo;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
@@ -19,9 +20,11 @@ namespace Microsoft.DotNet.DarcLib;
 
 public class DependencyFileManager : IDependencyFileManager
 {
+    public const string ArcadeSdkPackageName = "Microsoft.DotNet.Arcade.Sdk";
+
     private static readonly ImmutableDictionary<string, KnownDependencyType> _knownAssetNames = new Dictionary<string, KnownDependencyType>()
     {
-        { "Microsoft.DotNet.Arcade.Sdk", KnownDependencyType.GlobalJson },
+        { ArcadeSdkPackageName, KnownDependencyType.GlobalJson },
         { "Microsoft.DotNet.Build.Tasks.SharedFramework.Sdk", KnownDependencyType.GlobalJson },
         { "Microsoft.DotNet.Helix.Sdk", KnownDependencyType.GlobalJson },
         { "Microsoft.DotNet.SharedFramework.Sdk", KnownDependencyType.GlobalJson },
@@ -32,7 +35,7 @@ public class DependencyFileManager : IDependencyFileManager
 
     private static readonly ImmutableDictionary<string, string> _sdkMapping = new Dictionary<string, string>()
     {
-        { "Microsoft.DotNet.Arcade.Sdk", "msbuild-sdks" },
+        { ArcadeSdkPackageName, "msbuild-sdks" },
         { "Microsoft.DotNet.Build.Tasks.SharedFramework.Sdk", "msbuild-sdks" },
         { "Microsoft.DotNet.Helix.Sdk", "msbuild-sdks" },
         { "Microsoft.DotNet.SharedFramework.Sdk", "msbuild-sdks" },
@@ -120,24 +123,37 @@ public class DependencyFileManager : IDependencyFileManager
         }
     }
 
+
+    /// <summary>
+    /// Get the tools.dotnet section of the global.json from a target repo URI
+    /// </summary>
+    /// <param name="repoUri">repo to get the version from</param>
+    /// <param name="commit">commit sha to query</param>
+    public async Task<SemanticVersion> ReadToolsDotnetVersionAsync(string repoUri, string commit)
+    {
+        JObject globalJson = await ReadGlobalJsonAsync(repoUri, commit);
+        JToken dotnet = globalJson.SelectToken("tools.dotnet", true);
+
+        _logger.LogInformation("Reading dotnet version from global.json succeeded!");
+
+        if (!SemanticVersion.TryParse(dotnet.ToString(), out SemanticVersion dotnetVersion))
+        {
+            _logger.LogError($"Failed to parse dotnet version from global.json from repo: {repoUri} at commit {commit}. Version: {dotnet}");
+        }
+
+        return dotnetVersion;
+    }
+
     public async Task<XmlDocument> ReadNugetConfigAsync(string repoUri, string branch)
     {
         return await ReadXmlFileAsync(VersionFiles.NugetConfig, repoUri, branch);
     }
 
-    public async Task<IEnumerable<DependencyDetail>> ParseVersionDetailsXmlAsync(string repoUri, string branch, bool includePinned = true)
+    public async Task<VersionDetails> ParseVersionDetailsXmlAsync(string repoUri, string branch, bool includePinned = true)
     {
-        if (!string.IsNullOrEmpty(branch))
-        {
-            _logger.LogInformation(
-                $"Getting a collection of dependencies from '{VersionFiles.VersionDetailsXml}' in repo '{repoUri}' " +
-                $"and branch '{branch}'...");
-        }
-        else
-        {
-            _logger.LogInformation(
-                $"Getting a collection of dependencies from '{VersionFiles.VersionDetailsXml}' in repo '{repoUri}'...");
-        }
+        _logger.LogInformation(
+            $"Getting a collection of dependencies from '{VersionFiles.VersionDetailsXml}' in repo '{repoUri}'" +
+            (!string.IsNullOrEmpty(branch) ? $" and branch '{branch}'" : string.Empty) + "...");
 
         XmlDocument document = await ReadVersionDetailsXmlAsync(repoUri, branch);
 
@@ -156,7 +172,8 @@ public class DependencyFileManager : IDependencyFileManager
         string repoUri,
         string branch)
     {
-        var existingDependencies = await ParseVersionDetailsXmlAsync(repoUri, branch);
+        var versionDetails = await ParseVersionDetailsXmlAsync(repoUri, branch);
+        var existingDependencies = versionDetails.Dependencies;
         if (existingDependencies.Any(dep => dep.Name.Equals(dependency.Name, StringComparison.OrdinalIgnoreCase)))
         {
             throw new DependencyException($"Dependency {dependency.Name} already exists in this repository");
@@ -205,38 +222,30 @@ public class DependencyFileManager : IDependencyFileManager
         return element;
     }
 
-    /// <summary>
-    ///
-    /// </summary>
-    /// <param name="itemsToUpdate"></param>
-    /// <param name="repoUri"></param>
-    /// <param name="branch"></param>
-    /// <param name="oldDependencies"></param>
-    /// <param name="incomingDotNetSdkVersion"></param>
-    /// <returns></returns>
-    public async Task<GitFileContentContainer> UpdateDependencyFiles(
+    public void UpdateVersionDetails(
+        XmlDocument versionDetails,
         IEnumerable<DependencyDetail> itemsToUpdate,
-        string repoUri,
-        string branch,
-        IEnumerable<DependencyDetail> oldDependencies,
-        SemanticVersion incomingDotNetSdkVersion)
+        SourceDependency sourceDependency,
+        IEnumerable<DependencyDetail> oldDependencies)
     {
-        XmlDocument versionDetails = await ReadVersionDetailsXmlAsync(repoUri, branch);
-        XmlDocument versionProps = await ReadVersionPropsAsync(repoUri, branch);
-        JObject globalJson = await ReadGlobalJsonAsync(repoUri, branch);
-        JObject toolsConfigurationJson = await ReadDotNetToolsConfigJsonAsync(repoUri, branch);
-        XmlDocument nugetConfig = await ReadNugetConfigAsync(repoUri, branch);
+        // Adds/updates the <Source> element
+        if (sourceDependency != null)
+        {
+            var sourceNode = versionDetails.SelectSingleNode($"//{VersionDetailsParser.SourceElementName}");
+            if (sourceNode == null)
+            {
+                sourceNode = versionDetails.CreateElement(VersionDetailsParser.SourceElementName);
+                var dependenciesNode = versionDetails.SelectSingleNode($"//{VersionDetailsParser.DependenciesElementName}");
+                dependenciesNode.PrependChild(sourceNode);
+            }
+
+            SetAttribute(versionDetails, sourceNode, VersionDetailsParser.UriElementName, sourceDependency.Uri);
+            SetAttribute(versionDetails, sourceNode, VersionDetailsParser.ShaElementName, sourceDependency.Sha);
+        }
 
         foreach (DependencyDetail itemToUpdate in itemsToUpdate)
         {
-            if (string.IsNullOrEmpty(itemToUpdate.Version) ||
-                string.IsNullOrEmpty(itemToUpdate.Name) ||
-                string.IsNullOrEmpty(itemToUpdate.Commit) ||
-                string.IsNullOrEmpty(itemToUpdate.RepoUri))
-            {
-                throw new DarcException($"Either the name, version, commit or repo uri of dependency '{itemToUpdate.Name}' in " +
-                                        $"repo '{repoUri}' and branch '{branch}' was empty.");
-            }
+            itemToUpdate.Validate();
 
             // Double check that the dependency is not pinned
             if (itemToUpdate.Pinned)
@@ -267,8 +276,38 @@ public class DependencyFileManager : IDependencyFileManager
             SetAttribute(versionDetails, nodeToUpdate, VersionDetailsParser.NameAttributeName, itemToUpdate.Name);
             SetElement(versionDetails, nodeToUpdate, VersionDetailsParser.ShaElementName, itemToUpdate.Commit);
             SetElement(versionDetails, nodeToUpdate, VersionDetailsParser.UriElementName, itemToUpdate.RepoUri);
+        }
+    }
+
+    public async Task<GitFileContentContainer> UpdateDependencyFiles(
+        IEnumerable<DependencyDetail> itemsToUpdate,
+        SourceDependency sourceDependency,
+        string repoUri,
+        string branch,
+        IEnumerable<DependencyDetail> oldDependencies,
+        SemanticVersion incomingDotNetSdkVersion)
+    {
+        XmlDocument versionDetails = await ReadVersionDetailsXmlAsync(repoUri, branch);
+        XmlDocument versionProps = await ReadVersionPropsAsync(repoUri, branch);
+        JObject globalJson = await ReadGlobalJsonAsync(repoUri, branch);
+        JObject toolsConfigurationJson = await ReadDotNetToolsConfigJsonAsync(repoUri, branch);
+        XmlDocument nugetConfig = await ReadNugetConfigAsync(repoUri, branch);
+
+        foreach (DependencyDetail itemToUpdate in itemsToUpdate)
+        {
+            try
+            {
+                itemToUpdate.Validate();
+            }
+            catch (DarcException e)
+            {
+                throw new DarcException(e.Message + $" in repo '{repoUri}' and branch '{branch}'", e);
+            }
+
             UpdateVersionFiles(versionProps, globalJson, toolsConfigurationJson, itemToUpdate);
         }
+
+        UpdateVersionDetails(versionDetails, itemsToUpdate, sourceDependency, oldDependencies);
 
         // Combine the two sets of dependencies. If an asset is present in the itemsToUpdate,
         // prefer that one over the old dependencies
@@ -328,7 +367,7 @@ public class DependencyFileManager : IDependencyFileManager
             {
                 if (repoDotnetVersion.CompareTo(incomingDotnetVersion) < 0)
                 {
-                    Dictionary<GitFileMetadataName, string> metadata = new Dictionary<GitFileMetadataName, string>();
+                    Dictionary<GitFileMetadataName, string> metadata = [];
 
                     globalJson["tools"]["dotnet"] = incomingDotnetVersion.ToNormalizedString();
                     metadata.Add(GitFileMetadataName.ToolsDotNetUpdate, incomingDotnetVersion.ToNormalizedString());
@@ -359,9 +398,9 @@ public class DependencyFileManager : IDependencyFileManager
         return null;
     }
 
-    private bool IsOnlyPresentInMaestroManagedFeed(HashSet<string> locations)
+    private static bool IsOnlyPresentInMaestroManagedFeed(HashSet<string> locations)
     {
-        return locations != null && locations.All(l => IsMaestroManagedFeed(l));
+        return locations != null && locations.All(IsMaestroManagedFeed);
     }
 
     private static bool IsMaestroManagedFeed(string feed)
@@ -718,7 +757,7 @@ public class DependencyFileManager : IDependencyFileManager
         // https://github.com/dotnet/arcade/issues/1095.  Today this is only called from the Local interface so
         // it's okay for now.
         var file = new GitFile(VersionFiles.VersionDetailsXml, versionDetails);
-        await GetGitClient(repo).CommitFilesAsync(new List<GitFile> { file }, repo, branch, $"Add {dependency} to " +
+        await GetGitClient(repo).CommitFilesAsync([file], repo, branch, $"Add {dependency} to " +
             $"'{VersionFiles.VersionDetailsXml}'");
 
         _logger.LogInformation(
@@ -825,7 +864,7 @@ public class DependencyFileManager : IDependencyFileManager
         // https://github.com/dotnet/arcade/issues/1095.  Today this is only called from the Local interface so
         // it's okay for now.
         var file = new GitFile(VersionFiles.VersionProps, versionProps);
-        await GetGitClient(repo).CommitFilesAsync(new List<GitFile> { file }, repo, branch, $"Add {dependency} to " +
+        await GetGitClient(repo).CommitFilesAsync([file], repo, branch, $"Add {dependency} to " +
             $"'{VersionFiles.VersionProps}'");
 
         _logger.LogInformation(
@@ -854,7 +893,7 @@ public class DependencyFileManager : IDependencyFileManager
 
         var file = new GitFile(VersionFiles.GlobalJson, globalJson);
         await GetGitClient(repoUri).CommitFilesAsync(
-            new List<GitFile> { file },
+            [file],
             repoUri,
             branch,
             $"Add {dependency.Name} to '{VersionFiles.GlobalJson}'");
@@ -953,7 +992,7 @@ public class DependencyFileManager : IDependencyFileManager
         }
     }
 
-    private void UpdateVersionGlobalJson(DependencyDetail itemToUpdate, JToken token)
+    private static void UpdateVersionGlobalJson(DependencyDetail itemToUpdate, JToken token)
     {
         string versionElementName = VersionFiles.CalculateGlobalJsonElementName(itemToUpdate.Name);
 
@@ -1006,14 +1045,14 @@ public class DependencyFileManager : IDependencyFileManager
     /// <returns>Async task</returns>
     public async Task<bool> Verify(string repo, string branch)
     {
-        Task<IEnumerable<DependencyDetail>> dependencyDetails;
+        Task<VersionDetails> versionDetails;
         Task<XmlDocument> versionProps;
         Task<JObject> globalJson;
         Task<JObject> dotnetToolsJson;
 
         try
         {
-            dependencyDetails = ParseVersionDetailsXmlAsync(repo, branch);
+            versionDetails = ParseVersionDetailsXmlAsync(repo, branch);
         }
         catch (Exception e)
         {
@@ -1051,31 +1090,31 @@ public class DependencyFileManager : IDependencyFileManager
             return false;
         }
 
-        List<Task<bool>> verificationTasks = new List<Task<bool>>()
-        {
+        List<Task<bool>> verificationTasks =
+        [
             VerifyNoDuplicatedProperties(await versionProps),
-            VerifyNoDuplicatedDependencies(await dependencyDetails),
+            VerifyNoDuplicatedDependencies((await versionDetails).Dependencies),
             VerifyMatchingVersionProps(
-                await dependencyDetails,
+                (await versionDetails).Dependencies,
                 await versionProps,
                 out Task<HashSet<string>> utilizedVersionPropsDependencies),
             VerifyMatchingGlobalJson(
-                await dependencyDetails,
+                (await versionDetails).Dependencies,
                 await globalJson,
                 out Task<HashSet<string>> utilizedGlobalJsonDependencies),
             VerifyUtilizedDependencies(
-                await dependencyDetails,
+                (await versionDetails).Dependencies,
                 new List<HashSet<string>>
                 {
                     await utilizedVersionPropsDependencies,
                     await utilizedGlobalJsonDependencies
                 }),
             VerifyMatchingDotNetToolsJson(
-                await dependencyDetails,
+                (await versionDetails).Dependencies,
                 await dotnetToolsJson)
-        };
+        ];
 
-        var results = await Task.WhenAll<bool>(verificationTasks);
+        var results = await Task.WhenAll(verificationTasks);
         return results.All(result => result);
     }
 
@@ -1105,7 +1144,7 @@ public class DependencyFileManager : IDependencyFileManager
     public Task<bool> VerifyNoDuplicatedProperties(XmlDocument versionProps)
     {
         bool hasNoDuplicatedProperties = true;
-        HashSet<string> existingProperties = new HashSet<string>();
+        HashSet<string> existingProperties = [];
 
         XmlNodeList propertyGroups = versionProps.GetElementsByTagName("PropertyGroup");
         foreach (XmlNode propertyGroup in propertyGroups)
@@ -1117,8 +1156,8 @@ public class DependencyFileManager : IDependencyFileManager
                     var element = property as XmlElement;
                     var propertyName = element.Name;
 
-                    propertyName = Regex.Replace(propertyName, @"PackageVersion$", String.Empty);
-                    propertyName = Regex.Replace(propertyName, @"Version$", String.Empty);
+                    propertyName = Regex.Replace(propertyName, @"PackageVersion$", string.Empty);
+                    propertyName = Regex.Replace(propertyName, @"Version$", string.Empty);
 
                     propertyName += element.GetAttribute("Condition");
                     propertyName += element.GetAttribute("condition");
@@ -1146,7 +1185,7 @@ public class DependencyFileManager : IDependencyFileManager
     private Task<bool> VerifyNoDuplicatedDependencies(IEnumerable<DependencyDetail> dependencies)
     {
         bool result = true;
-        HashSet<string> dependenciesBitVector = new HashSet<string>();
+        HashSet<string> dependenciesBitVector = [];
         foreach (var dependency in dependencies)
         {
             if (dependenciesBitVector.Contains(dependency.Name, StringComparer.OrdinalIgnoreCase))
@@ -1168,7 +1207,7 @@ public class DependencyFileManager : IDependencyFileManager
     /// <returns></returns>
     private Task<bool> VerifyMatchingVersionProps(IEnumerable<DependencyDetail> dependencies, XmlDocument versionProps, out Task<HashSet<string>> utilizedDependencies)
     {
-        HashSet<string> utilizedSet = new HashSet<string>();
+        HashSet<string> utilizedSet = [];
         bool result = true;
         foreach (var dependency in dependencies)
         {
@@ -1218,7 +1257,7 @@ public class DependencyFileManager : IDependencyFileManager
         JObject rootToken,
         out Task<HashSet<string>> utilizedDependencies)
     {
-        HashSet<string> utilizedSet = new HashSet<string>();
+        HashSet<string> utilizedSet = [];
         bool result = true;
         foreach (var dependency in dependencies)
         {
@@ -1317,7 +1356,7 @@ public class DependencyFileManager : IDependencyFileManager
     /// <param name="currentToken">Current token to walk.</param>
     /// <param name="elementName">Property name to find.</param>
     /// <returns>Token with name 'name' or null if it does not exist.</returns>
-    private JToken FindDependency(JToken currentToken, string elementName)
+    private static JToken FindDependency(JToken currentToken, string elementName)
     {
         foreach (JProperty property in currentToken.Children<JProperty>())
         {
@@ -1368,7 +1407,7 @@ public class DependencyFileManager : IDependencyFileManager
     /// <returns>Dictionary with key = repo name for logging, value = hashset of feeds</returns>
     public Dictionary<string, HashSet<string>> FlattenLocationsAndSplitIntoGroups(Dictionary<string, HashSet<string>> assetLocationMap)
     {
-        HashSet<string> allManagedFeeds = new HashSet<string>();
+        HashSet<string> allManagedFeeds = [];
         foreach (string asset in assetLocationMap.Keys)
         {
             if (IsOnlyPresentInMaestroManagedFeed(assetLocationMap[asset]))
@@ -1378,7 +1417,7 @@ public class DependencyFileManager : IDependencyFileManager
         }
 
         string unableToResolveName = "unknown";
-        Dictionary<string, HashSet<string>> result = new Dictionary<string, HashSet<string>>();
+        Dictionary<string, HashSet<string>> result = [];
         foreach (string feedUri in allManagedFeeds)
         {
             string repoNameFromFeed = string.Empty;
@@ -1404,7 +1443,7 @@ public class DependencyFileManager : IDependencyFileManager
 
             if (!result.ContainsKey(repoNameFromFeed))
             {
-                result.Add(repoNameFromFeed, new HashSet<string>());
+                result.Add(repoNameFromFeed, []);
             }
             result[repoNameFromFeed].Add(feedUri);
         }
@@ -1492,7 +1531,7 @@ public class DependencyFileManager : IDependencyFileManager
         {
             if (!assetLocationMappings.ContainsKey(dependency.Name))
             {
-                assetLocationMappings[dependency.Name] = new HashSet<string>();
+                assetLocationMappings[dependency.Name] = [];
             }
 
             assetLocationMappings[dependency.Name].UnionWith(dependency.Locations ?? Enumerable.Empty<string>());
