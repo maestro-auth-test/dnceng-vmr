@@ -1,24 +1,20 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
 using FluentAssertions;
-using Microsoft.DotNet.Darc.Tests.VirtualMonoRepo;
 using Microsoft.DotNet.DarcLib.Helpers;
 using Microsoft.DotNet.DarcLib.Models.VirtualMonoRepo;
 using Microsoft.DotNet.DarcLib.VirtualMonoRepo;
 using NUnit.Framework;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 #nullable enable 
 namespace Microsoft.DotNet.Darc.Tests.VirtualMonoRepo;
 
 [TestFixture]
-public class VmrCloakedFileScannerTest : VmrTestsBase
+internal class VmrCloakedFileScannerTest : VmrTestsBase
 {
     [Test]
     public async Task VmrCloakedFileScannerTests()
@@ -32,7 +28,7 @@ public class VmrCloakedFileScannerTest : VmrTestsBase
         // Test the scanner when there are no cloaked files to be found
         var list = await CallDarcCloakedFileScan(baselinesFilePath);
 
-        list.Count().Should().Be(0);
+        list.Should().BeEmpty();
 
         var newFilePath = VmrPath / "src" / Constants.ProductRepoName / "src";
         Directory.CreateDirectory(newFilePath);
@@ -52,34 +48,34 @@ public class VmrCloakedFileScannerTest : VmrTestsBase
         // Test the scanner when the .gitattributes file is preserving the cloaked file
         list = await CallDarcCloakedFileScan(baselinesFilePath);
 
-        list.Count().Should().Be(0);
+        list.Count.Should().Be(0);
     }
 
     protected override async Task CopyReposForCurrentTest()
     {
-        await CopyRepoAndCreateVersionDetails(CurrentTestDirectory, Constants.ProductRepoName);
+        await CopyRepoAndCreateVersionFiles(Constants.ProductRepoName);
     }
 
-    protected async override Task CopyVmrForCurrentTest()
+    protected override async Task CopyVmrForCurrentTest()
     {
         CopyDirectory(VmrTestsOneTimeSetUp.CommonVmrPath, VmrPath);
 
         var sourceMappings = new SourceMappingFile()
         {
-            Mappings = new List<SourceMappingSetting>
-            {
+            Mappings =
+            [
                 new SourceMappingSetting
                 {
                     Name = Constants.ProductRepoName,
                     DefaultRemote = ProductRepoPath
                 }
-            }
+            ]
         };
 
-        sourceMappings.Defaults.Exclude = new[]
-        {
+        sourceMappings.Defaults.Exclude =
+        [
             "**/*.dll"
-        };
+        ];
 
         await WriteSourceMappingsInVmr(sourceMappings);
     }
