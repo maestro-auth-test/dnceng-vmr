@@ -1,22 +1,22 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using Microsoft.DotNet.Darc.Helpers;
+using System;
+using System.Net;
+using System.Threading.Tasks;
 using Microsoft.DotNet.Darc.Options;
 using Microsoft.DotNet.DarcLib;
 using Microsoft.DotNet.Maestro.Client;
 using Microsoft.DotNet.Maestro.Client.Models;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
-using System;
-using System.Net;
-using System.Threading.Tasks;
 
 namespace Microsoft.DotNet.Darc.Operations;
 
 internal class AddChannelOperation : Operation
 {
-    AddChannelCommandLineOptions _options;
+    private readonly AddChannelCommandLineOptions _options;
     public AddChannelOperation(AddChannelCommandLineOptions options)
         : base(options)
     {
@@ -31,7 +31,7 @@ internal class AddChannelOperation : Operation
     {
         try
         {
-            IRemote remote = RemoteFactory.GetBarOnlyRemote(_options, Logger);
+            IBarApiClient barClient = Provider.GetRequiredService<IBarApiClient>();
 
             // If the user tried to mark as internal, indicate that this is currently
             // unsupported.
@@ -41,7 +41,7 @@ internal class AddChannelOperation : Operation
                 return Constants.ErrorCode;
             }
 
-            Channel newChannelInfo = await remote.CreateChannelAsync(_options.Name, _options.Classification);
+            Channel newChannelInfo = await barClient.CreateChannelAsync(_options.Name, _options.Classification);
             switch (_options.OutputFormat)
             {
                 case DarcOutputType.json:
