@@ -1,7 +1,6 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using Microsoft.DotNet.DarcLib.Helpers;
@@ -11,7 +10,7 @@ using Microsoft.DotNet.DarcLib.VirtualMonoRepo;
 
 namespace Microsoft.DotNet.Darc.Tests.VirtualMonoRepo;
 
-public class VmrPatchesTestsBase : VmrTestsBase
+internal class VmrPatchesTestsBase : VmrTestsBase
 {
     protected string PatchFileName { get; private set; } = null!;
     protected NativePath InstallerPatchesDir { get; private set; } = null!;
@@ -33,8 +32,8 @@ public class VmrPatchesTestsBase : VmrTestsBase
         InstallerFilePathInVmr = vmrSourcesDir / Constants.InstallerRepoName / Constants.GetRepoFileName(Constants.InstallerRepoName);
         ProductRepoFilePathInVmr = vmrSourcesDir / Constants.ProductRepoName / Constants.GetRepoFileName(Constants.ProductRepoName);
         
-        await CopyRepoAndCreateVersionDetails(CurrentTestDirectory, Constants.ProductRepoName);
-        await CopyRepoAndCreateVersionDetails(CurrentTestDirectory, Constants.InstallerRepoName);
+        await CopyRepoAndCreateVersionFiles(Constants.ProductRepoName);
+        await CopyRepoAndCreateVersionFiles(Constants.InstallerRepoName);
         File.Copy(
             VmrTestsOneTimeSetUp.ResourcesPath / PatchFileName, 
             InstallerRepoPath / Constants.PatchesFolderName / Constants.ProductRepoName / PatchFileName);
@@ -47,8 +46,8 @@ public class VmrPatchesTestsBase : VmrTestsBase
 
         var sourceMappings = new SourceMappingFile
         {
-            Mappings = new List<SourceMappingSetting>
-            {
+            Mappings =
+            [
                 new SourceMappingSetting
                 {
                     Name = Constants.InstallerRepoName,
@@ -59,7 +58,7 @@ public class VmrPatchesTestsBase : VmrTestsBase
                     Name = Constants.ProductRepoName,
                     DefaultRemote = ProductRepoPath
                 }
-            },
+            ],
             PatchesPath = "src/installer/patches/"
         };
 
