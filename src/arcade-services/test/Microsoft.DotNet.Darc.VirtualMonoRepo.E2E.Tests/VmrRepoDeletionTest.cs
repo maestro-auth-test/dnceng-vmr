@@ -16,7 +16,7 @@ using NUnit.Framework;
 namespace Microsoft.DotNet.Darc.Tests.VirtualMonoRepo;
 
 [TestFixture]
-public class VmrRepoDeletionTest : VmrTestsBase
+internal class VmrRepoDeletionTest : VmrTestsBase
 {
     private SourceMappingFile _sourceMappings = null!;
     private readonly JsonSerializerOptions _jsonSettings;
@@ -40,7 +40,7 @@ public class VmrRepoDeletionTest : VmrTestsBase
         await InitializeRepoAtLastCommit(Constants.InstallerRepoName, InstallerRepoPath, sourceMappingsPath);
         await InitializeRepoAtLastCommit(Constants.ProductRepoName, ProductRepoPath, sourceMappingsPath);
 
-        var expectedFilesFromRepos = new List<LocalPath>
+        var expectedFilesFromRepos = new List<NativePath>
         {
             VmrPath / VmrInfo.SourcesDir / "some-file.txt",
             VmrPath / VmrInfo.SourcesDir / Constants.InstallerRepoName / _sourceMappingsRelativePath,
@@ -50,21 +50,21 @@ public class VmrRepoDeletionTest : VmrTestsBase
 
         var expectedFiles = GetExpectedFilesInVmr(
             VmrPath,
-            new[] { Constants.InstallerRepoName, Constants.ProductRepoName },
+            [Constants.InstallerRepoName, Constants.ProductRepoName],
             expectedFilesFromRepos);
 
         CheckDirectoryContents(VmrPath, expectedFiles);
 
         // Remove product-repo1 mapping
 
-        _sourceMappings.Mappings = new List<SourceMappingSetting>
-        {
+        _sourceMappings.Mappings =
+        [
             new SourceMappingSetting
             {
                 Name = Constants.InstallerRepoName,
                 DefaultRemote = InstallerRepoPath,
             }
-        };
+        ];
 
         await File.WriteAllTextAsync(InstallerRepoPath / _sourceMappingsRelativePath,
             JsonSerializer.Serialize(_sourceMappings, _jsonSettings));
@@ -73,24 +73,24 @@ public class VmrRepoDeletionTest : VmrTestsBase
 
         await UpdateRepoToLastCommit(Constants.InstallerRepoName, InstallerRepoPath);
 
-        expectedFilesFromRepos = new List<LocalPath>
-        {
+        expectedFilesFromRepos =
+        [
             VmrPath / VmrInfo.SourcesDir / "some-file.txt",
             VmrPath / VmrInfo.SourcesDir / Constants.InstallerRepoName / _sourceMappingsRelativePath,
             VmrPath / VmrInfo.SourcesDir / Constants.InstallerRepoName / Constants.GetRepoFileName(Constants.InstallerRepoName),
-        };
+        ];
 
         expectedFiles = GetExpectedFilesInVmr(
             VmrPath,
-            new[] { Constants.InstallerRepoName },
+            [Constants.InstallerRepoName],
             expectedFilesFromRepos);
 
         CheckDirectoryContents(VmrPath, expectedFiles);
 
         var versions = AllVersionsPropsFile.DeserializeFromXml(VmrPath / VmrInfo.GitInfoSourcesDir / AllVersionsPropsFile.FileName);
-        versions.Versions.Keys.Should().BeEquivalentTo(new string[] { "installerGitCommitHash" });
+        versions.Versions.Keys.Should().BeEquivalentTo(["installerGitCommitHash"]);
 
-        var sourceManifest = SourceManifest.FromJson(Info.GetSourceManifestPath());
+        var sourceManifest = SourceManifest.FromJson(VmrPath / VmrInfo.SourcesDir / VmrInfo.SourceManifestFileName);
         sourceManifest.Repositories.Should().HaveCount(1);
         sourceManifest.Repositories.First().Path.Should().Be("installer");
 
@@ -99,23 +99,23 @@ public class VmrRepoDeletionTest : VmrTestsBase
 
     protected override async Task CopyReposForCurrentTest()
     {
-        await CopyRepoAndCreateVersionDetails(CurrentTestDirectory, Constants.InstallerRepoName);
-        await CopyRepoAndCreateVersionDetails(CurrentTestDirectory, Constants.ProductRepoName);
+        await CopyRepoAndCreateVersionFiles(Constants.InstallerRepoName);
+        await CopyRepoAndCreateVersionFiles(Constants.ProductRepoName);
 
         _sourceMappings = new SourceMappingFile
         {
             PatchesPath = "src/installer/patches/",
             SourceMappingsPath = "src/installer/src/SourceBuild/content/source-mappings.json",
-            AdditionalMappings = new List<AdditionalMappingSetting>
-            {
+            AdditionalMappings =
+            [
                 new AdditionalMappingSetting
                 {
                     Source = "src/installer/src/SourceBuild/content/source-mappings.json",
                     Destination = "src"
                 }
-            },
-            Mappings = new List<SourceMappingSetting>
-            {
+            ],
+            Mappings =
+            [
                 new SourceMappingSetting
                 {
                     Name = Constants.InstallerRepoName,
@@ -126,7 +126,7 @@ public class VmrRepoDeletionTest : VmrTestsBase
                     Name = Constants.ProductRepoName,
                     DefaultRemote = ProductRepoPath,
                 },
-            }
+            ]
         };
 
         Directory.CreateDirectory(InstallerRepoPath / "src" / "SourceBuild" / "content");

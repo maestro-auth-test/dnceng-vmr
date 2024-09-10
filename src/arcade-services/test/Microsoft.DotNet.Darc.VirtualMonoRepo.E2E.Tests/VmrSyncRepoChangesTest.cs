@@ -15,10 +15,10 @@ using NUnit.Framework;
 namespace Microsoft.DotNet.Darc.Tests.VirtualMonoRepo;
 
 [TestFixture]
-public class VmrSyncRepoChangesTest :  VmrTestsBase
+internal class VmrSyncRepoChangesTest :  VmrTestsBase
 {
     private readonly string _dependencyFileName = "dependency-file.txt";
-    private string _productRepoFileName = Constants.GetRepoFileName(Constants.ProductRepoName);
+    private readonly string _productRepoFileName = Constants.GetRepoFileName(Constants.ProductRepoName);
     private NativePath _productRepoPath = null!;
     private NativePath _productRepoFilePath = null!;
     private NativePath _dependencyRepoFilePath = null!;
@@ -41,7 +41,7 @@ public class VmrSyncRepoChangesTest :  VmrTestsBase
 
         await UpdateRepoToLastCommit(Constants.ProductRepoName, ProductRepoPath);
 
-        var expectedFilesFromRepos = new List<LocalPath>
+        var expectedFilesFromRepos = new List<NativePath>
         {
             _productRepoFilePath,
             _dependencyRepoFilePath
@@ -49,7 +49,7 @@ public class VmrSyncRepoChangesTest :  VmrTestsBase
 
         var expectedFiles = GetExpectedFilesInVmr(
             VmrPath,
-            new[] { Constants.ProductRepoName, Constants.DependencyRepoName },
+            [Constants.ProductRepoName, Constants.DependencyRepoName],
             expectedFilesFromRepos
         );
 
@@ -72,7 +72,7 @@ public class VmrSyncRepoChangesTest :  VmrTestsBase
 
         await UpdateRepoToLastCommit(Constants.ProductRepoName, ProductRepoPath);
 
-        var expectedFilesFromRepos = new List<LocalPath>
+        var expectedFilesFromRepos = new List<NativePath>
         {
             _productRepoFilePath,
             _dependencyRepoFilePath
@@ -80,14 +80,14 @@ public class VmrSyncRepoChangesTest :  VmrTestsBase
 
         var expectedFiles = GetExpectedFilesInVmr(
             VmrPath,
-            new[] { Constants.ProductRepoName, Constants.DependencyRepoName },
+            [Constants.ProductRepoName, Constants.DependencyRepoName],
             expectedFilesFromRepos
         );
 
         CheckDirectoryContents(VmrPath, expectedFiles);
         CheckFileContents(_productRepoPath / VersionFiles.VersionDetailsXml, versionDetails, removeEmptyLines: false);
         await GitOperations.CheckAllIsCommitted(VmrPath);
-        var sourceManifest = SourceManifest.FromJson(VmrPath / VmrInfo.SourcesDir / VmrInfo.SourceManifestFileName);
+        var sourceManifest = SourceManifest.FromJson(VmrPath / VmrInfo.DefaultRelativeSourceManifestPath);
 
         sourceManifest.GetVersion(Constants.DependencyRepoName)!.PackageVersion.Should().Be("8.0.1");
         (await File.ReadAllTextAsync(VmrPath / VmrInfo.GitInfoSourcesDir / Constants.DependencyRepoName + ".props")).Should().Contain("8.0.1");
@@ -112,7 +112,7 @@ public class VmrSyncRepoChangesTest :  VmrTestsBase
 
         await UpdateRepoToLastCommit(Constants.ProductRepoName, ProductRepoPath);
 
-        var expectedFilesFromRepos = new List<LocalPath>
+        var expectedFilesFromRepos = new List<NativePath>
         {
             _productRepoFilePath,
             _dependencyRepoFilePath,
@@ -121,7 +121,7 @@ public class VmrSyncRepoChangesTest :  VmrTestsBase
 
         var expectedFiles = GetExpectedFilesInVmr(
             VmrPath,
-            new[] { Constants.ProductRepoName, Constants.DependencyRepoName },
+            [Constants.ProductRepoName, Constants.DependencyRepoName],
             expectedFilesFromRepos
         );
 
@@ -149,7 +149,7 @@ public class VmrSyncRepoChangesTest :  VmrTestsBase
         await GitOperations.CommitAll(ProductRepoPath, "Add submodule");
         await UpdateRepoToLastCommit(Constants.ProductRepoName, ProductRepoPath, generateCodeowners: true);
 
-        var expectedFilesFromRepos = new List<LocalPath>
+        var expectedFilesFromRepos = new List<NativePath>
         {
             _productRepoFilePath,
             _dependencyRepoFilePath,
@@ -157,11 +157,10 @@ public class VmrSyncRepoChangesTest :  VmrTestsBase
             VmrPath / VmrInfo.SourcesDir / Constants.ProductRepoName / VmrInfo.CodeownersPath,
         };
 
-        List<LocalPath> expectedFiles = GetExpectedFilesInVmr(
+        List<NativePath> expectedFiles = GetExpectedFilesInVmr(
             VmrPath,
-            new[] { Constants.ProductRepoName, Constants.DependencyRepoName },
-            expectedFilesFromRepos
-        );
+            [Constants.ProductRepoName, Constants.DependencyRepoName],
+            expectedFilesFromRepos);
 
         expectedFiles.Add(VmrPath / VmrInfo.CodeownersPath);
 
@@ -250,13 +249,10 @@ public class VmrSyncRepoChangesTest :  VmrTestsBase
     {
         var dependenciesMap = new Dictionary<string, List<string>>
         {
-            { Constants.ProductRepoName,  new List<string> {Constants.DependencyRepoName} }
+            { Constants.ProductRepoName, [Constants.DependencyRepoName] }
         };
 
-        await CopyRepoAndCreateVersionDetails(
-            CurrentTestDirectory,
-            Constants.ProductRepoName,
-            dependenciesMap);
+        await CopyRepoAndCreateVersionFiles(Constants.ProductRepoName, dependenciesMap);
 
         CopyDirectory(VmrTestsOneTimeSetUp.CommonExternalRepoPath, SecondRepoPath);
     }
@@ -267,8 +263,8 @@ public class VmrSyncRepoChangesTest :  VmrTestsBase
 
         var sourceMappings = new SourceMappingFile()
         {
-            Mappings = new List<SourceMappingSetting>
-            {
+            Mappings =
+            [
                 new SourceMappingSetting
                 {
                     Name = Constants.DependencyRepoName,
@@ -279,16 +275,16 @@ public class VmrSyncRepoChangesTest :  VmrTestsBase
                     Name = Constants.ProductRepoName,
                     DefaultRemote = ProductRepoPath
                 }
-            }
+            ]
         };
 
-        sourceMappings.Defaults.Exclude = new[] 
-        {
+        sourceMappings.Defaults.Exclude =
+        [
             "externals/external-repo/**/*.exe", 
             "excluded/*",
             "**/*.dll",
             "**/*.Dll",
-        };
+        ];
 
         await WriteSourceMappingsInVmr(sourceMappings);
     }
@@ -297,7 +293,7 @@ public class VmrSyncRepoChangesTest :  VmrTestsBase
     {
         await InitializeRepoAtLastCommit(Constants.ProductRepoName, ProductRepoPath);
 
-        var expectedFilesFromRepos = new List<LocalPath>
+        var expectedFilesFromRepos = new List<NativePath>
         {
             _productRepoFilePath,
             _dependencyRepoFilePath
@@ -305,7 +301,7 @@ public class VmrSyncRepoChangesTest :  VmrTestsBase
 
         var expectedFiles = GetExpectedFilesInVmr(
             VmrPath,
-            new[] { Constants.ProductRepoName, Constants.DependencyRepoName },
+            [Constants.ProductRepoName, Constants.DependencyRepoName],
             expectedFilesFromRepos
         );
 

@@ -1,12 +1,16 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using Microsoft.Arcade.Common;
-using Microsoft.DotNet.Darc.Options;
-using Microsoft.Extensions.Logging;
 using System;
 using System.Threading.Tasks;
+using Microsoft.Arcade.Common;
+using Microsoft.DotNet.Darc.Helpers;
+using Microsoft.DotNet.Darc.Options;
+using Microsoft.DotNet.DarcLib;
+using Microsoft.DotNet.DarcLib.Helpers;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Console;
 
 #nullable enable
@@ -45,6 +49,13 @@ public abstract class Operation : IDisposable
             .SetMinimumLevel(level));
             
         services.AddSingleton(options);
+        services.TryAddSingleton<IFileSystem, FileSystem>();
+        services.TryAddSingleton<IRemoteFactory, RemoteFactory>();
+        services.TryAddTransient<IProcessManager>(sp => ActivatorUtilities.CreateInstance<ProcessManager>(sp, options.GitLocation));
+        services.TryAddSingleton(sp => RemoteFactory.GetBarClient(options, sp.GetRequiredService<ILogger<BarApiClient>>()));
+        services.TryAddSingleton<IBasicBarClient>(sp => sp.GetRequiredService<IBarApiClient>());
+        services.TryAddSingleton(options.GetRemoteConfiguration());
+        services.TryAddTransient<ILogger>(sp => sp.GetRequiredService<ILogger<Operation>>());
 
         Provider = services.BuildServiceProvider();
         Logger = Provider.GetRequiredService<ILogger<Operation>>();

@@ -37,8 +37,8 @@ public abstract class SubscriptionOrPullRequestActorTests : ActorTests
     [SetUp]
     public void SubscriptionOrPullRequestActorTests_SetUp()
     {
-        ContextUpdates = new List<Action<BuildAssetRegistryContext>>();
-        AfterDbUpdateActions= new List<Action>();
+        ContextUpdates = [];
+        AfterDbUpdateActions= [];
         ActionRunner = CreateMock<IActionRunner>();
         HostingEnvironment = CreateMock<IHostEnvironment>();
     }
@@ -109,7 +109,7 @@ public abstract class SubscriptionOrPullRequestActorTests : ActorTests
 
     internal Build GivenANewBuild(bool addToChannel, (string name, string version, bool nonShipping)[] assets = null)
     {
-        assets = assets ?? new[] {("quail.eating.ducks", "1.1.0", false), ("quail.eating.ducks", "1.1.0", false), ("quite.expensive.device", "2.0.1", true) };
+        assets ??= new[] {("quail.eating.ducks", "1.1.0", false), ("quail.eating.ducks", "1.1.0", false), ("quite.expensive.device", "2.0.1", true) };
         var build = new Build
         {
             GitHubBranch = SourceBranch,
@@ -126,14 +126,14 @@ public abstract class SubscriptionOrPullRequestActorTests : ActorTests
                         Name = a.name,
                         Version = a.version,
                         NonShipping = a.nonShipping,
-                        Locations = new List<AssetLocation>
-                        {
+                        Locations =
+                        [
                             new AssetLocation
                             {
                                 Location = AssetFeedUrl,
                                 Type = LocationType.NugetFeed
                             }
-                        }
+                        ]
                     }))
         };
         ContextUpdates.Add(
