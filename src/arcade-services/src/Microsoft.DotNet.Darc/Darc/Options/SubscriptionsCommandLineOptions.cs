@@ -13,7 +13,7 @@ using Microsoft.DotNet.Services.Utility;
 
 namespace Microsoft.DotNet.Darc.Options;
 
-abstract class SubscriptionsCommandLineOptions : CommandLineOptions
+internal abstract class SubscriptionsCommandLineOptions : CommandLineOptions
 {
     [Option("target-repo", HelpText = "Filter by target repo (matches substring unless --exact or --regex is passed).")]
     public string TargetRepository { get; set; }
@@ -46,6 +46,9 @@ abstract class SubscriptionsCommandLineOptions : CommandLineOptions
     [Option("enabled", HelpText = "Get only enabled subscriptions.")]
     public bool Enabled { get; set; }
 
+    [Option("source-enabled", HelpText = "Get only source-enabled (VMR code flow) subscriptions.")]
+    public bool? SourceEnabled { get; set; }
+
     [Option("batchable", HelpText = "Get only batchable subscriptions.")]
     public bool Batchable { get; set; }
 
@@ -55,10 +58,10 @@ abstract class SubscriptionsCommandLineOptions : CommandLineOptions
     [Option("ids", Separator = ',', HelpText = "Get only subscriptions with these ids.")]
     public IEnumerable<string> SubscriptionIds { get; set; }
 
-    public async Task<IEnumerable<Subscription>> FilterSubscriptions(IRemote remote)
+    public async Task<IEnumerable<Subscription>> FilterSubscriptions(IBarApiClient barClient)
     {
-        IEnumerable<DefaultChannel> defaultChannels = await remote.GetDefaultChannelsAsync();
-        return (await remote.GetSubscriptionsAsync()).Where(subscription =>
+        IEnumerable<DefaultChannel> defaultChannels = await barClient.GetDefaultChannelsAsync();
+        return (await barClient.GetSubscriptionsAsync()).Where(subscription =>
         {
             return SubcriptionFilter(subscription, defaultChannels);
         });
@@ -66,15 +69,16 @@ abstract class SubscriptionsCommandLineOptions : CommandLineOptions
 
     public bool SubcriptionFilter(Subscription subscription, IEnumerable<DefaultChannel> defaultChannels)
     {
-        return (SubscriptionParameterMatches(TargetRepository, subscription.TargetRepository) &&
-                SubscriptionParameterMatches(GitHelpers.NormalizeBranchName(TargetBranch), subscription.TargetBranch) &&
-                SubscriptionParameterMatches(SourceRepository, subscription.SourceRepository) &&
-                SubscriptionParameterMatches(Channel, subscription.Channel.Name) &&
-                SubscriptionEnabledParameterMatches(subscription) &&
-                SubscriptionBatchableParameterMatches(subscription) &&
-                SubscriptionIdsParameterMatches(subscription) &&
-                SubscriptionFrequenciesParameterMatches(subscription) &&
-                SubscriptionDefaultChannelTargetParameterMatches(subscription, defaultChannels));
+        return SubscriptionParameterMatches(TargetRepository, subscription.TargetRepository) &&
+               SubscriptionParameterMatches(GitHelpers.NormalizeBranchName(TargetBranch), subscription.TargetBranch) &&
+               SubscriptionParameterMatches(SourceRepository, subscription.SourceRepository) &&
+               SubscriptionParameterMatches(Channel, subscription.Channel.Name) &&
+               SubscriptionEnabledParameterMatches(subscription) &&
+               SubscriptionSourceEnabledParameterMatches(subscription) &&
+               SubscriptionBatchableParameterMatches(subscription) &&
+               SubscriptionIdsParameterMatches(subscription) &&
+               SubscriptionFrequenciesParameterMatches(subscription) &&
+               SubscriptionDefaultChannelTargetParameterMatches(subscription, defaultChannels);
     }
 
     public bool SubscriptionEnabledParameterMatches(Subscription subscription)
@@ -82,6 +86,11 @@ abstract class SubscriptionsCommandLineOptions : CommandLineOptions
         return (Enabled && subscription.Enabled) ||
                (Disabled && !subscription.Enabled) ||
                (!Enabled && !Disabled);
+    }
+
+    public bool SubscriptionSourceEnabledParameterMatches(Subscription subscription)
+    {
+        return !SourceEnabled.HasValue || subscription.SourceEnabled == SourceEnabled;
     }
 
     public bool SubscriptionBatchableParameterMatches(Subscription subscription)
@@ -140,18 +149,17 @@ abstract class SubscriptionsCommandLineOptions : CommandLineOptions
     /// Determine whether the set of input options has any valid filters.
     /// </summary>
     /// <returns>True if there are valid filters, false otherwise.</returns>
-    public bool HasAnyFilters()
-    {
-        return !string.IsNullOrEmpty(TargetRepository) ||
-               !string.IsNullOrEmpty(TargetBranch) ||
-               !string.IsNullOrEmpty(SourceRepository) ||
-               !string.IsNullOrEmpty(Channel) ||
-               Frequencies.Any() ||
-               !string.IsNullOrEmpty(DefaultChannelTarget) ||
-               Disabled ||
-               Enabled ||
-               Batchable ||
-               NotBatchable ||
-               SubscriptionIds.Any();
-    }
+    public bool HasAnyFilters() =>
+        !string.IsNullOrEmpty(TargetRepository)
+        || !string.IsNullOrEmpty(TargetBranch)
+        || !string.IsNullOrEmpty(SourceRepository)
+        || !string.IsNullOrEmpty(Channel)
+        || Frequencies.Any()
+        || !string.IsNullOrEmpty(DefaultChannelTarget)
+        || Disabled
+        || Enabled
+        || SourceEnabled.HasValue
+        || Batchable
+        || NotBatchable
+        || SubscriptionIds.Any();
 }

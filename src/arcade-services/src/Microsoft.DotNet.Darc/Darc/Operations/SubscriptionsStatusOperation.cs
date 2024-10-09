@@ -1,23 +1,23 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using Microsoft.DotNet.Darc.Helpers;
-using Microsoft.DotNet.Darc.Options;
-using Microsoft.DotNet.DarcLib;
-using Microsoft.DotNet.Maestro.Client;
-using Microsoft.DotNet.Maestro.Client.Models;
-using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
+using Microsoft.DotNet.Darc.Options;
+using Microsoft.DotNet.DarcLib;
+using Microsoft.DotNet.Maestro.Client;
+using Microsoft.DotNet.Maestro.Client.Models;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Microsoft.DotNet.Darc.Operations;
 
-class SubscriptionsStatusOperation : Operation
+internal class SubscriptionsStatusOperation : Operation
 {
-    SubscriptionsStatusCommandLineOptions _options;
+    private readonly SubscriptionsStatusCommandLineOptions _options;
 
     public SubscriptionsStatusOperation(SubscriptionsStatusCommandLineOptions options)
         : base(options)
@@ -44,17 +44,17 @@ class SubscriptionsStatusOperation : Operation
 
         try
         {
-            IRemote remote = RemoteFactory.GetBarOnlyRemote(_options, Logger);
+            IBarApiClient barClient = Provider.GetRequiredService<IBarApiClient>();
 
             bool noConfirm = _options.NoConfirmation;
-            List<Subscription> subscriptionsToEnableDisable = new List<Subscription>();
+            List<Subscription> subscriptionsToEnableDisable = [];
 
             if (!string.IsNullOrEmpty(_options.Id))
             {
                 // Look up subscription so we can print it later.
                 try
                 {
-                    Subscription subscription = await remote.GetSubscriptionAsync(_options.Id);
+                    Subscription subscription = await barClient.GetSubscriptionAsync(_options.Id);
                     subscriptionsToEnableDisable.Add(subscription);
                 }
                 catch (RestApiException e) when (e.Response.Status == (int)HttpStatusCode.NotFound)
@@ -71,7 +71,7 @@ class SubscriptionsStatusOperation : Operation
                     return Constants.ErrorCode;
                 }
 
-                IEnumerable<Subscription> subscriptions = await _options.FilterSubscriptions(remote);
+                IEnumerable<Subscription> subscriptions = await _options.FilterSubscriptions(barClient);
 
                 if (!subscriptions.Any())
                 {
@@ -116,7 +116,7 @@ class SubscriptionsStatusOperation : Operation
                     Console.WriteLine($"  {UxHelpers.GetSubscriptionDescription(subscription)}");
                 }
 
-                SubscriptionUpdate subscriptionToUpdate = new SubscriptionUpdate
+                var subscriptionToUpdate = new SubscriptionUpdate
                 {
                     ChannelName = subscription.Channel.Name,
                     SourceRepository = subscription.SourceRepository,
@@ -127,7 +127,7 @@ class SubscriptionsStatusOperation : Operation
                 subscriptionToUpdate.Policy.UpdateFrequency = subscription.Policy.UpdateFrequency;
                 subscriptionToUpdate.Policy.MergePolicies = subscription.Policy.MergePolicies;
 
-                var updatedSubscription = await remote.UpdateSubscriptionAsync(
+                var updatedSubscription = await barClient.UpdateSubscriptionAsync(
                     subscription.Id.ToString(),
                     subscriptionToUpdate);
             }
