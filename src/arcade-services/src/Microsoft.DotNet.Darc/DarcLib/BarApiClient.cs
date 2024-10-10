@@ -15,11 +15,11 @@ using AsyncEnumerable = Microsoft.DotNet.Maestro.Client.AsyncEnumerable;
 
 namespace Microsoft.DotNet.DarcLib;
 
-public class MaestroApiBarClient : IBarClient
+public class BarApiClient : IBarApiClient
 {
-    IMaestroApi _barClient;
+    private readonly IMaestroApi _barClient;
 
-    public MaestroApiBarClient(string buildAssetRegistryPat, string buildAssetRegistryBaseUri = null)
+    public BarApiClient(string buildAssetRegistryPat, string buildAssetRegistryBaseUri = null)
     {
         if (!string.IsNullOrEmpty(buildAssetRegistryBaseUri))
         {
@@ -191,16 +191,16 @@ public class MaestroApiBarClient : IBarClient
         {
             BestCasePathTime = flowRef.BestCasePathTime,
             GoalTimeInMinutes = flowRef.GoalTimeInMinutes,
-            InputChannels = flowRef.InputChannels.ToHashSet(),
+            InputChannels = [.. flowRef.InputChannels],
             OfficialBuildTime = flowRef.OfficialBuildTime,
             OnLongestBuildPath = flowRef.OnLongestBuildPath,
-            OutputChannels = flowRef.OutputChannels.ToHashSet(),
+            OutputChannels = [.. flowRef.OutputChannels],
             PrBuildTime = flowRef.PrBuildTime,
             WorstCasePathTime = flowRef.WorstCasePathTime
         };
     }
 
-    private DependencyFlowEdge ToDependencyFlowEdge(
+    private static DependencyFlowEdge ToDependencyFlowEdge(
         FlowEdge flowEdge,
         IReadOnlyDictionary<string, DependencyFlowNode> nodesById,
         IReadOnlyDictionary<Guid, Subscription> subscriptionsById)
@@ -233,9 +233,21 @@ public class MaestroApiBarClient : IBarClient
     ///     Dictionary of merge policies. Each merge policy is a name of a policy with an associated blob
     ///     of metadata
     /// </param>
+    /// <param name="failureNotificationTags">List of GitHub tags to notify with a PR comment when the build fails</param>
+    /// <param name="sourceEnabled">Whether this is a VMR code flow (special VMR subscription)</param>
+    /// <param name="excludedAssets">List of assets to exclude from the source-enabled code flow</param>
     /// <returns>Newly created subscription, if successful</returns>
-    public Task<Subscription> CreateSubscriptionAsync(string channelName, string sourceRepo, string targetRepo,
-        string targetBranch, string updateFrequency, bool batchable, List<MergePolicy> mergePolicies, string failureNotificationTags)
+    public Task<Subscription> CreateSubscriptionAsync(
+        string channelName,
+        string sourceRepo,
+        string targetRepo,
+        string targetBranch,
+        string updateFrequency,
+        bool batchable,
+        List<MergePolicy> mergePolicies,
+        string failureNotificationTags,
+        bool sourceEnabled,
+        IReadOnlyCollection<string> excludedAssets)
     {
         var subscriptionData = new SubscriptionData(
             channelName: channelName,
@@ -244,14 +256,19 @@ public class MaestroApiBarClient : IBarClient
             targetBranch: targetBranch,
             policy: new SubscriptionPolicy(
                 batchable,
-                (UpdateFrequency) Enum.Parse(
+                (UpdateFrequency)Enum.Parse(
                     typeof(UpdateFrequency),
                     updateFrequency,
                     ignoreCase: true))
             {
                 MergePolicies = mergePolicies.ToImmutableList(),
-            }, 
-            failureNotificationTags);
+            },
+            failureNotificationTags)
+        {
+            SourceEnabled = sourceEnabled,
+            ExcludedAssets = excludedAssets.ToImmutableList(),
+        };
+
         return _barClient.Subscriptions.CreateAsync(subscriptionData);
     }
 
@@ -264,6 +281,17 @@ public class MaestroApiBarClient : IBarClient
     public Task<Subscription> UpdateSubscriptionAsync(Guid subscriptionId, SubscriptionUpdate subscription)
     {
         return _barClient.Subscriptions.UpdateSubscriptionAsync(subscriptionId, subscription);
+    }
+
+    /// <summary>
+    ///     Update an existing subscription
+    /// </summary>
+    /// <param name="subscriptionId">Id of subscription to update</param>
+    /// <param name="subscription">Subscription information</param>
+    /// <returns>Updated subscription</returns>
+    public Task<Subscription> UpdateSubscriptionAsync(string subscriptionId, SubscriptionUpdate subscription)
+    {
+        return UpdateSubscriptionAsync(Guid.Parse(subscriptionId), subscription);
     }
 
     /// <summary>
@@ -304,6 +332,16 @@ public class MaestroApiBarClient : IBarClient
     public Task<Subscription> GetSubscriptionAsync(Guid subscriptionId)
     {
         return _barClient.Subscriptions.GetSubscriptionAsync(subscriptionId);
+    }
+
+    /// <summary>
+    ///     Retrieve a subscription by ID
+    /// </summary>
+    /// <param name="subscriptionId">Id of subscription</param>
+    /// <returns>Subscription information</returns>
+    public Task<Subscription> GetSubscriptionAsync(string subscriptionId)
+    {
+        return GetSubscriptionAsync(Guid.Parse(subscriptionId));
     }
 
     /// <summary>

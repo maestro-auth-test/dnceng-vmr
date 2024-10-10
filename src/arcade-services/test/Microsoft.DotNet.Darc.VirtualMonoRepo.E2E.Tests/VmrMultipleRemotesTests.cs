@@ -12,7 +12,7 @@ using NUnit.Framework;
 
 namespace Microsoft.DotNet.Darc.Tests.VirtualMonoRepo;
 
-public class VmrMultipleRemotesTests : VmrTestsBase
+internal class VmrMultipleRemotesTests : VmrTestsBase
 {
     private NativePath FirstDependencyPath => CurrentTestDirectory / (Constants.DependencyRepoName + "1");
     private NativePath SecondDependencyPath => CurrentTestDirectory / (Constants.DependencyRepoName + "2");
@@ -44,7 +44,7 @@ public class VmrMultipleRemotesTests : VmrTestsBase
 
         await InitializeRepoAtLastCommit(Constants.InstallerRepoName, InstallerRepoPath);
 
-        var expectedFilesFromRepos = new List<LocalPath>
+        var expectedFilesFromRepos = new List<NativePath>
         {
             installerFilePath,
             dependencyFilePath,
@@ -52,11 +52,10 @@ public class VmrMultipleRemotesTests : VmrTestsBase
 
         var expectedFiles = GetExpectedFilesInVmr(
             VmrPath,
-            new[] 
-            { 
+            [ 
                 Constants.InstallerRepoName,
                 Constants.DependencyRepoName, 
-            },
+            ],
             expectedFilesFromRepos);
 
         CheckDirectoryContents(VmrPath, expectedFiles);
@@ -98,12 +97,12 @@ public class VmrMultipleRemotesTests : VmrTestsBase
 
         await InitializeRepoAtLastCommit(Constants.DependencyRepoName, FirstDependencyPath);
 
-        var expectedFilesFromRepos = new List<LocalPath>
+        var expectedFilesFromRepos = new List<NativePath>
         {
             dependencyFilePath,
         };
 
-        var expectedFiles = GetExpectedFilesInVmr(VmrPath, new[] { Constants.DependencyRepoName }, expectedFilesFromRepos);
+        var expectedFiles = GetExpectedFilesInVmr(VmrPath, [Constants.DependencyRepoName], expectedFilesFromRepos);
 
         CheckDirectoryContents(VmrPath, expectedFiles);
 
@@ -133,7 +132,7 @@ public class VmrMultipleRemotesTests : VmrTestsBase
             { Constants.InstallerRepoName, new List<string> { Constants.DependencyRepoName } },
         };
 
-        await CopyRepoAndCreateVersionDetails(CurrentTestDirectory, Constants.InstallerRepoName, dependenciesMap);
+        await CopyRepoAndCreateVersionFiles(Constants.InstallerRepoName, dependenciesMap);
 
         // Prepare dependencies at paths 1 and 2
         Directory.Move(DependencyRepoPath, FirstDependencyPath);
@@ -146,8 +145,8 @@ public class VmrMultipleRemotesTests : VmrTestsBase
 
         var sourceMappings = new SourceMappingFile
         {
-            Mappings = new List<SourceMappingSetting>
-            {
+            Mappings =
+            [
                 new SourceMappingSetting
                 {
                     Name = Constants.InstallerRepoName,
@@ -158,7 +157,7 @@ public class VmrMultipleRemotesTests : VmrTestsBase
                     Name = Constants.DependencyRepoName,
                     DefaultRemote = FirstDependencyPath
                 }
-            },
+            ],
             PatchesPath = "src/installer/patches/"
         };
 

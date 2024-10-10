@@ -1,20 +1,20 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using Microsoft.DotNet.Darc.Helpers;
+using System;
+using System.Threading.Tasks;
 using Microsoft.DotNet.Darc.Options;
 using Microsoft.DotNet.DarcLib;
 using Microsoft.DotNet.Maestro.Client;
 using Microsoft.DotNet.Maestro.Client.Models;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using System;
-using System.Threading.Tasks;
 
 namespace Microsoft.DotNet.Darc.Operations;
 
-class DefaultChannelStatusOperation : UpdateDefaultChannelBaseOperation
+internal class DefaultChannelStatusOperation : UpdateDefaultChannelBaseOperation
 {
-    DefaultChannelStatusCommandLineOptions _options;
+    private readonly DefaultChannelStatusCommandLineOptions _options;
 
     public DefaultChannelStatusOperation(DefaultChannelStatusCommandLineOptions options)
         : base(options)
@@ -25,7 +25,6 @@ class DefaultChannelStatusOperation : UpdateDefaultChannelBaseOperation
     /// <summary>
     /// Implements the default channel enable/disable operation
     /// </summary>
-    /// <param name="options"></param>
     public override async Task<int> ExecuteAsync()
     {
         if ((_options.Enable && _options.Disable) ||
@@ -35,7 +34,7 @@ class DefaultChannelStatusOperation : UpdateDefaultChannelBaseOperation
             return Constants.ErrorCode;
         }
 
-        IRemote remote = RemoteFactory.GetBarOnlyRemote(_options, Logger);
+        IBarApiClient barClient = Provider.GetRequiredService<IBarApiClient>();
 
         try
         {
@@ -65,7 +64,7 @@ class DefaultChannelStatusOperation : UpdateDefaultChannelBaseOperation
                 enabled = false;
             }
 
-            await remote.UpdateDefaultChannelAsync(resolvedChannel.Id, enabled: enabled);
+            await barClient.UpdateDefaultChannelAsync(resolvedChannel.Id, enabled: enabled);
 
             Console.WriteLine($"Default channel association has been {(enabled ? "enabled" : "disabled")}.");
 
