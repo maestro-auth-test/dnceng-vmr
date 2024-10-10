@@ -83,7 +83,7 @@ public partial class ChannelsController20180716Tests
                 BuildNumber = buildNumber,
                 Repository = repository,
                 Branch = branch,
-                Assets = new List<AssetData>()
+                Assets = []
             }) ;
             build = (Build) ((ObjectResult) result).Value;
         }
@@ -128,7 +128,7 @@ public partial class ChannelsController20180716Tests
                 BuildNumber = buildNumber,
                 Repository = repository,
                 Branch = branch,
-                Assets = new List<AssetData>(),
+                Assets = [],
             });
             build = (Build) ((ObjectResult) result).Value;
         }
@@ -167,6 +167,7 @@ public partial class ChannelsController20180716Tests
             collection.AddSingleton<ChannelsController>();
             collection.AddSingleton<BuildsController>();
             collection.AddSingleton(Mock.Of<IRemoteFactory>());
+            collection.AddSingleton(Mock.Of<IBasicBarClient>());
             collection.AddSingleton<IBackgroundQueue, NeverBackgroundQueue>();
         }
 
