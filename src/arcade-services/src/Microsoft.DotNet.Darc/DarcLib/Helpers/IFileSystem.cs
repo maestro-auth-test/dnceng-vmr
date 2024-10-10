@@ -27,6 +27,8 @@ public interface IFileSystem
 
     string? GetFileName(string? path);
 
+    public string GetTempFileName();
+
     string? GetDirectoryName(string? path);
 
     string PathCombine(string path1, string path2);
@@ -34,6 +36,8 @@ public interface IFileSystem
     void DeleteFile(string path);
 
     void CopyFile(string sourceFileName, string destFileName, bool overwrite = false);
+
+    void CopyDirectory(string sourceDir, string destinationDir, bool recursive);
 
     FileStream GetFileStream(string path, FileMode mode, FileAccess access);
 

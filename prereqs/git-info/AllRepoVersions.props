@@ -1,10 +1,11 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project>
   <PropertyGroup>
-    <arcadeservicesGitCommitHash>27ea5bc37537f1c90865d36157efee67a259f043</arcadeservicesGitCommitHash>
-    <arcadeservicesOutputPackageVersion>1.1.0-beta.23566.3</arcadeservicesOutputPackageVersion>
+    <arcadeservicesGitCommitHash>a812b6422584a6942dd54de6590e3c00ec5626b8</arcadeservicesGitCommitHash>
+    <arcadeservicesOutputPackageVersion>1.1.0</arcadeservicesOutputPackageVersion>
     <dncengGitCommitHash>ecbbe4d2600067b73aa5f7ccad6d80dbd8ebfcf1</dncengGitCommitHash>
     <dncengOutputPackageVersion>1.1.0-beta.23565.1</dncengOutputPackageVersion>
     <dncengsharedGitCommitHash>8f837017ac05ea8638e247a5866e57402f439a1b</dncengsharedGitCommitHash>
+    <dncengsharedOutputPackageVersion>1.1.0-beta.23523.2</dncengsharedOutputPackageVersion>
   </PropertyGroup>
 </Project>

@@ -6,49 +6,51 @@ using Microsoft.DotNet.DarcLib.Helpers;
 using Microsoft.Extensions.Logging;
 
 #nullable enable
-namespace Microsoft.DotNet.DarcLib.VirtualMonoRepo;
+namespace Microsoft.DotNet.DarcLib;
 
 public interface IGitRepoFactory
 {
     IGitRepo CreateClient(string repoUri);
 }
-
-public class VmrGitClientFactory : IGitRepoFactory
+public class GitRepoFactory : IGitRepoFactory
 {
-    private readonly IVmrInfo _vmrInfo;
     private readonly RemoteConfiguration _remoteConfiguration;
     private readonly IProcessManager _processManager;
+    private readonly IFileSystem _fileSystem;
     private readonly ILoggerFactory _loggerFactory;
+    private readonly string? _temporaryPath = null;
 
-    public VmrGitClientFactory(
-        IVmrInfo vmrInfo,
+    public GitRepoFactory(
         RemoteConfiguration remoteConfiguration,
         IProcessManager processManager,
-        ILoggerFactory loggerFactory)
+        IFileSystem fileSystem,
+        ILoggerFactory loggerFactory,
+        string temporaryPath)
     {
-        _vmrInfo = vmrInfo;
         _remoteConfiguration = remoteConfiguration;
         _processManager = processManager;
+        _fileSystem = fileSystem;
         _loggerFactory = loggerFactory;
+        _temporaryPath = temporaryPath;
     }
 
-    public IGitRepo CreateClient(string repoUri) => GitRepoTypeParser.ParseFromUri(repoUri) switch
+    public IGitRepo CreateClient(string repoUri) => GitRepoUrlParser.ParseTypeFromUri(repoUri) switch
     {
         GitRepoType.AzureDevOps => new AzureDevOpsClient(
             _processManager.GitExecutable,
             _remoteConfiguration.AzureDevOpsToken,
             _loggerFactory.CreateLogger<AzureDevOpsClient>(),
-            _vmrInfo.TmpPath),
+            _temporaryPath),
 
         GitRepoType.GitHub => new GitHubClient(
             _processManager.GitExecutable,
             _remoteConfiguration.GitHubToken,
             _loggerFactory.CreateLogger<GitHubClient>(),
-            _vmrInfo.TmpPath,
+            _temporaryPath,
             // Caching not in use for Darc local client.
             null),
 
-        GitRepoType.Local => new LocalLibGit2Client(_remoteConfiguration, _processManager, _loggerFactory.CreateLogger<LocalGitClient>()),
+        GitRepoType.Local => new LocalLibGit2Client(_remoteConfiguration, _processManager, _fileSystem, _loggerFactory.CreateLogger<LocalGitClient>()),
 
         _ => throw new ArgumentException("Unknown git repository type", nameof(repoUri)),
     };
