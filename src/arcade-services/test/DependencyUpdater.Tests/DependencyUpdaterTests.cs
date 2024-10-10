@@ -6,6 +6,7 @@ using Maestro.Contracts;
 using Maestro.Data;
 using Microsoft.DotNet.DarcLib;
 using Microsoft.DotNet.Internal.Logging;
+using Microsoft.DotNet.Kusto;
 using Microsoft.DotNet.ServiceFabric.ServiceHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -27,6 +28,7 @@ public class DependencyUpdaterTests
     protected MockReliableStateManager StateManager;
     protected Mock<ISubscriptionActor> SubscriptionActor;
     protected Mock<IRemoteFactory> RemoteFactory;
+    protected Mock<IBasicBarClient> BarMock;
 
     [SetUp]
     public void DependencyUpdaterTests_SetUp()
@@ -35,6 +37,7 @@ public class DependencyUpdaterTests
         StateManager = new MockReliableStateManager();
         SubscriptionActor = new Mock<ISubscriptionActor>(MockBehavior.Strict);
         RemoteFactory = new Mock<IRemoteFactory>(MockBehavior.Strict);
+        BarMock = new Mock<IBasicBarClient>(MockBehavior.Strict);
         Env = new Mock<IHostEnvironment>(MockBehavior.Strict);
         services.AddSingleton(Env.Object);
         services.AddSingleton<IReliableStateManager>(StateManager);
@@ -54,6 +57,8 @@ public class DependencyUpdaterTests
             });
         services.AddSingleton(proxyFactory.Object);
         services.AddSingleton(RemoteFactory.Object);
+        services.AddSingleton(BarMock.Object);
+        services.AddTransient<IKustoClientProvider>(_ => null);
         services.AddOperationTracking(o => { });
         Provider = services.BuildServiceProvider();
         Scope = Provider.CreateScope();

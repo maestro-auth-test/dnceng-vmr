@@ -1,25 +1,27 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using Microsoft.DotNet.Darc.Helpers;
-using Microsoft.DotNet.Darc.Options;
-using Microsoft.DotNet.DarcLib;
-using Microsoft.DotNet.Maestro.Client;
-using Microsoft.DotNet.Maestro.Client.Models;
-using Microsoft.DotNet.Services.Utility;
-using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
+using Microsoft.DotNet.Darc.Helpers;
+using Microsoft.DotNet.Darc.Options;
+using Microsoft.DotNet.DarcLib;
+using Microsoft.DotNet.DarcLib.Helpers;
+using Microsoft.DotNet.Maestro.Client;
+using Microsoft.DotNet.Maestro.Client.Models;
+using Microsoft.DotNet.Services.Utility;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Microsoft.DotNet.Darc.Operations;
 
 internal class AddBuildToChannelOperation : Operation
 {
-    private static readonly Dictionary<string, (string project, int pipelineId)> BuildPromotionPipelinesForAccount =
+    private static readonly IReadOnlyDictionary<string, (string project, int pipelineId)> BuildPromotionPipelinesForAccount =
         new Dictionary<string, (string project, int pipelineId)>(StringComparer.OrdinalIgnoreCase)
         {
             { "dnceng", ("internal", 750) },
@@ -30,7 +32,7 @@ internal class AddBuildToChannelOperation : Operation
     // (the branch that has build promotion infra) doesn't have YAML
     // implementation for them. There is usually not a high demand for
     // promoting builds to these channels.
-    private readonly Dictionary<int, string> UnsupportedChannels = new Dictionary<int, string>()
+    private static readonly IReadOnlyDictionary<int, string> UnsupportedChannels = new Dictionary<int, string>
     {
         { 3, ".NET Core 3 Dev" },
         { 19, ".NET Core 3 Release" },
@@ -48,7 +50,8 @@ internal class AddBuildToChannelOperation : Operation
         { 560, ".NET Core SDK 3.1.1xx" }
     };
 
-    AddBuildToChannelCommandLineOptions _options;
+    private readonly AddBuildToChannelCommandLineOptions _options;
+
     public AddBuildToChannelOperation(AddBuildToChannelCommandLineOptions options)
         : base(options)
     {
@@ -63,9 +66,9 @@ internal class AddBuildToChannelOperation : Operation
     {
         try
         {
-            IRemote remote = RemoteFactory.GetBarOnlyRemote(_options, Logger);
+            IBarApiClient barClient = Provider.GetRequiredService<IBarApiClient>();
 
-            Build build = await remote.GetBuildAsync(_options.Id);
+            Build build = await barClient.GetBuildAsync(_options.Id);
             if (build == null)
             {
                 Console.WriteLine($"Could not find a build with id '{_options.Id}'.");
@@ -90,11 +93,11 @@ internal class AddBuildToChannelOperation : Operation
                 return Constants.ErrorCode;
             }
 
-            List<Channel> targetChannels = new List<Channel>();
+            List<Channel> targetChannels = [];
 
             if (!string.IsNullOrEmpty(_options.Channel))
             {
-                Channel targetChannel = await UxHelpers.ResolveSingleChannel(remote, _options.Channel);
+                Channel targetChannel = await UxHelpers.ResolveSingleChannel(barClient, _options.Channel);
                 if (targetChannel == null)
                 {
                     return Constants.ErrorCode;
@@ -105,7 +108,7 @@ internal class AddBuildToChannelOperation : Operation
 
             if (_options.AddToDefaultChannels)
             {
-                IEnumerable<DefaultChannel> defaultChannels = await remote.GetDefaultChannelsAsync(
+                IEnumerable<DefaultChannel> defaultChannels = await barClient.GetDefaultChannelsAsync(
                     build.GitHubRepository ?? build.AzureDevOpsRepository,
                     build.GitHubBranch ?? build.AzureDevOpsBranch);
 
@@ -150,7 +153,7 @@ internal class AddBuildToChannelOperation : Operation
             // Queues a build of the Build Promotion pipeline that will takes care of making sure
             // that the build assets are published to the right location and also promoting the build
             // to the requested channel
-            int promoteBuildQueuedStatus = await PromoteBuildAsync(build, targetChannels, remote)
+            int promoteBuildQueuedStatus = await PromoteBuildAsync(build, targetChannels, barClient)
                 .ConfigureAwait(false);
 
             if (promoteBuildQueuedStatus != Constants.SuccessCode)
@@ -159,7 +162,7 @@ internal class AddBuildToChannelOperation : Operation
             }
 
             // Get the latest build information to verify the channels
-            build = await remote.GetBuildAsync(build.Id);
+            build = await barClient.GetBuildAsync(build.Id);
 
             Console.WriteLine($"Assigning build '{build.Id}' to the following channel(s):");
             foreach (var channel in targetChannels)
@@ -171,11 +174,11 @@ internal class AddBuildToChannelOperation : Operation
 
             // Be helpful. Let the user know what will happen.
             string buildRepo = build.GitHubRepository ?? build.AzureDevOpsRepository;
-            List<Subscription> applicableSubscriptions = new List<Subscription>();
+            List<Subscription> applicableSubscriptions = [];
 
             foreach (var targetChannel in targetChannels)
             {
-                IEnumerable<Subscription> appSubscriptions = await remote.GetSubscriptionsAsync(
+                IEnumerable<Subscription> appSubscriptions = await barClient.GetSubscriptionsAsync(
                     sourceRepo: buildRepo,
                     channelId: targetChannel.Id);
 
@@ -198,13 +201,13 @@ internal class AddBuildToChannelOperation : Operation
         }
     }
 
-    private async Task<int> PromoteBuildAsync(Build build, List<Channel> targetChannels, IRemote remote)
+    private async Task<int> PromoteBuildAsync(Build build, List<Channel> targetChannels, IBarApiClient barClient)
     {
         if (_options.SkipAssetsPublishing)
         {
             foreach (var targetChannel in targetChannels)
             {
-                await remote.AssignBuildToChannelAsync(build.Id, targetChannel.Id);
+                await barClient.AssignBuildToChannelAsync(build.Id, targetChannel.Id);
                 Console.WriteLine($"Build {build.Id} was assigned to channel '{targetChannel.Name}' bypassing the promotion pipeline.");
             }
             return Constants.SuccessCode;
@@ -230,7 +233,7 @@ internal class AddBuildToChannelOperation : Operation
             return Constants.ErrorCode;
         }
 
-        AzureDevOpsClient azdoClient = new AzureDevOpsClient(gitExecutable: null, _options.AzureDevOpsPat, Logger, temporaryRepositoryPath: null);
+        var azdoClient = new AzureDevOpsClient(gitExecutable: null, _options.AzureDevOpsPat, Logger, temporaryRepositoryPath: null);
 
         var targetAzdoBuildStatus = await ValidateAzDOBuildAsync(azdoClient, build.AzureDevOpsAccount, build.AzureDevOpsProject, build.AzureDevOpsBuildId.Value)
             .ConfigureAwait(false);
@@ -263,12 +266,6 @@ internal class AddBuildToChannelOperation : Operation
             { "SymbolPublishingAdditionalParameters", _options.SymbolPublishingAdditionalParameters },
             { "ArtifactsPublishingAdditionalParameters", _options.ArtifactPublishingAdditionalParameters }
         };
-
-        if ((build.GitHubBranch?.Contains("release/", StringComparison.InvariantCultureIgnoreCase)) == true ||
-            (build.AzureDevOpsBranch?.Contains("release/", StringComparison.InvariantCultureIgnoreCase) == true))
-        {
-            promotionPipelineVariables.Add("UseServicingBuildPool", true.ToString());
-        }
 
         if (_options.DoSDLValidation)
         {
@@ -319,7 +316,7 @@ internal class AddBuildToChannelOperation : Operation
             return Constants.ErrorCode;
         }
 
-        build = await remote.GetBuildAsync(build.Id);
+        build = await barClient.GetBuildAsync(build.Id);
 
         if (targetChannels.All(ch => build.Channels.Any(c => c.Id == ch.Id)))
         {
@@ -416,12 +413,13 @@ internal class AddBuildToChannelOperation : Operation
             build.AzureDevOpsRepository :
             build.GitHubRepository;
 
-        IRemote repoAndBarRemote = RemoteFactory.GetRemote(_options, sourceBuildRepo, Logger);
+        IRemote repoRemote = RemoteFactory.GetRemote(_options, sourceBuildRepo, Logger);
+        IBarApiClient barClient = Provider.GetRequiredService<IBarApiClient>();
 
-        IEnumerable<DependencyDetail> sourceBuildDependencies = await repoAndBarRemote.GetDependenciesAsync(sourceBuildRepo, build.Commit)
+        IEnumerable<DependencyDetail> sourceBuildDependencies = await repoRemote.GetDependenciesAsync(sourceBuildRepo, build.Commit)
             .ConfigureAwait(false);
 
-        DependencyDetail sourceBuildArcadeSDKDependency = sourceBuildDependencies.FirstOrDefault(i => string.Equals(i.Name, "Microsoft.DotNet.Arcade.Sdk", StringComparison.OrdinalIgnoreCase));
+        DependencyDetail sourceBuildArcadeSDKDependency = sourceBuildDependencies.GetArcadeUpdate();
 
         if (sourceBuildArcadeSDKDependency == null)
         {
@@ -429,7 +427,7 @@ internal class AddBuildToChannelOperation : Operation
             return (null, null);
         }
 
-        IEnumerable<Asset> listArcadeSDKAssets = await repoAndBarRemote.GetAssetsAsync(sourceBuildArcadeSDKDependency.Name, sourceBuildArcadeSDKDependency.Version)
+        IEnumerable<Asset> listArcadeSDKAssets = await barClient.GetAssetsAsync(sourceBuildArcadeSDKDependency.Name, sourceBuildArcadeSDKDependency.Version)
             .ConfigureAwait(false);
 
         Asset sourceBuildArcadeSDKDepAsset = listArcadeSDKAssets.FirstOrDefault();
@@ -440,7 +438,7 @@ internal class AddBuildToChannelOperation : Operation
             return (null, null);
         }
 
-        Build sourceBuildArcadeSDKDepBuild = await repoAndBarRemote.GetBuildAsync(sourceBuildArcadeSDKDepAsset.BuildId);
+        Build sourceBuildArcadeSDKDepBuild = await barClient.GetBuildAsync(sourceBuildArcadeSDKDepAsset.BuildId);
 
         if (sourceBuildArcadeSDKDepBuild == null)
         {
@@ -469,7 +467,7 @@ internal class AddBuildToChannelOperation : Operation
         return (sourceBuildArcadeSDKDepBuild.GitHubBranch, sourceBuildArcadeSDKDepBuild.Commit);
     }
 
-    private void PrintSubscriptionInfo(List<Subscription> applicableSubscriptions)
+    private static void PrintSubscriptionInfo(List<Subscription> applicableSubscriptions)
     {
         IEnumerable<Subscription> subscriptionsThatWillFlowImmediately = applicableSubscriptions.Where(s => s.Enabled &&
             s.Policy.UpdateFrequency == UpdateFrequency.EveryBuild);
