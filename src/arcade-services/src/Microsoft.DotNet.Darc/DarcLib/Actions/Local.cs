@@ -7,14 +7,14 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using LibGit2Sharp;
 using Microsoft.DotNet.DarcLib.Helpers;
+using Microsoft.DotNet.DarcLib.Models;
 using Microsoft.Extensions.Logging;
 using NuGet.Versioning;
 
 namespace Microsoft.DotNet.DarcLib;
 
-public class Local : ILocal
+public class Local
 {
     private readonly DependencyFileManager _fileManager;
     private readonly ILocalLibGit2Client _gitClient;
@@ -34,7 +34,7 @@ public class Local : ILocal
     {
         _logger = logger;
         _versionDetailsParser = new VersionDetailsParser();
-        _gitClient = new LocalLibGit2Client(remoteConfiguration, new ProcessManager(logger, GitExecutable), logger);
+        _gitClient = new LocalLibGit2Client(remoteConfiguration, new ProcessManager(logger, GitExecutable), new FileSystem(), logger);
         _fileManager = new DependencyFileManager(_gitClient, _versionDetailsParser, logger);
 
         _repoRootDir = new(() => overrideRootPath ?? _gitClient.GetRootDirAsync().GetAwaiter().GetResult(), LazyThreadSafetyMode.PublicationOnly);
@@ -55,41 +55,38 @@ public class Local : ILocal
     ///     Updates existing dependencies in the dependency files
     /// </summary>
     /// <param name="dependencies">Dependencies that need updates.</param>
-    /// <param name="remote">Remote instance for gathering eng/common script updates.</param>
-    /// <returns></returns>
-    public async Task UpdateDependenciesAsync(List<DependencyDetail> dependencies, IRemoteFactory remoteFactory)
+    public async Task UpdateDependenciesAsync(List<DependencyDetail> dependencies, IRemoteFactory remoteFactory, IGitRepoFactory gitRepoFactory, IBarApiClient barClient)
     {
         // Read the current dependency files and grab their locations so that nuget.config can be updated appropriately.
         // Update the incoming dependencies with locations.
-        IEnumerable<DependencyDetail> oldDependencies = await GetDependenciesAsync();
+        List<DependencyDetail> oldDependencies = await GetDependenciesAsync();
 
-        IRemote barOnlyRemote = await remoteFactory.GetBarOnlyRemoteAsync(_logger);
-        await barOnlyRemote.AddAssetLocationToDependenciesAsync(oldDependencies);
-        await barOnlyRemote.AddAssetLocationToDependenciesAsync(dependencies);
+        var locationResolver = new AssetLocationResolver(barClient, _logger);
+        await locationResolver.AddAssetLocationToDependenciesAsync(oldDependencies);
+        await locationResolver.AddAssetLocationToDependenciesAsync(dependencies);
 
         // If we are updating the arcade sdk we need to update the eng/common files as well
-        DependencyDetail arcadeItem = dependencies.FirstOrDefault(
-            i => string.Equals(i.Name, "Microsoft.DotNet.Arcade.Sdk", StringComparison.OrdinalIgnoreCase));
+        DependencyDetail arcadeItem = dependencies.GetArcadeUpdate();
         SemanticVersion targetDotNetVersion = null;
-        IRemote arcadeRemote = null;
 
         if (arcadeItem != null)
         {
-            arcadeRemote = await remoteFactory.GetRemoteAsync(arcadeItem.RepoUri, _logger);
-            targetDotNetVersion = await arcadeRemote.GetToolsDotnetVersionAsync(arcadeItem.RepoUri, arcadeItem.Commit);
+            var fileManager = new DependencyFileManager(gitRepoFactory, _versionDetailsParser, _logger);
+            targetDotNetVersion = await fileManager.ReadToolsDotnetVersionAsync(arcadeItem.RepoUri, arcadeItem.Commit);
         }
 
-        var fileContainer = await _fileManager.UpdateDependencyFiles(dependencies, _repoRootDir.Value, null, oldDependencies, targetDotNetVersion);
+        var fileContainer = await _fileManager.UpdateDependencyFiles(dependencies, sourceDependency: null, _repoRootDir.Value, null, oldDependencies, targetDotNetVersion);
         List<GitFile> filesToUpdate = fileContainer.GetFilesToCommit();
 
         if (arcadeItem != null)
         {
             try
             {
+                IRemote arcadeRemote = await remoteFactory.GetRemoteAsync(arcadeItem.RepoUri, _logger);
                 List<GitFile> engCommonFiles = await arcadeRemote.GetCommonScriptFilesAsync(arcadeItem.RepoUri, arcadeItem.Commit);
                 filesToUpdate.AddRange(engCommonFiles);
 
-                List<GitFile> localEngCommonFiles = GetFilesAtRelativeRepoPathAsync("eng/common");
+                List<GitFile> localEngCommonFiles = GetFilesAtRelativeRepoPathAsync(Constants.CommonScriptFilesPath);
 
                 foreach (GitFile file in localEngCommonFiles)
                 {
@@ -126,10 +123,12 @@ public class Local : ILocal
     ///     Gets the local dependencies
     /// </summary>
     /// <returns></returns>
-    public async Task<IEnumerable<DependencyDetail>> GetDependenciesAsync(string name = null, bool includePinned = true)
+    public async Task<List<DependencyDetail>> GetDependenciesAsync(string name = null, bool includePinned = true)
     {
-        return (await _fileManager.ParseVersionDetailsXmlAsync(_repoRootDir.Value, null, includePinned)).Where(
-            dependency => string.IsNullOrEmpty(name) || dependency.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+        VersionDetails versionDetails = await _fileManager.ParseVersionDetailsXmlAsync(_repoRootDir.Value, null, includePinned);
+        return versionDetails.Dependencies
+            .Where(dependency => string.IsNullOrEmpty(name) || dependency.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+            .ToList();
     }
 
     /// <summary>
@@ -147,7 +146,7 @@ public class Local : ILocal
     /// <returns></returns>
     public IEnumerable<DependencyDetail> GetDependenciesFromFileContents(string fileContents, bool includePinned = true)
     {
-        return _versionDetailsParser.ParseVersionDetailsXml(fileContents, includePinned);
+        return _versionDetailsParser.ParseVersionDetailsXml(fileContents, includePinned).Dependencies;
     }
 
     /// <summary>

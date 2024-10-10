@@ -65,12 +65,12 @@ public static class UxHelpers
     /// <summary>
     ///     Resolve a channel substring to an exact channel, or print out potential names if more than one, or none, match.
     /// </summary>
-    /// <param name="remote">Remote for retrieving channels</param>
+    /// <param name="barClient">Remote for retrieving channels</param>
     /// <param name="desiredChannel">Desired channel</param>
     /// <returns>Channel, or null if no channel was matched.</returns>
-    public static async Task<Channel> ResolveSingleChannel(IRemote remote, string desiredChannel)
+    public static async Task<Channel> ResolveSingleChannel(IBarApiClient barClient, string desiredChannel)
     {
-        return ResolveSingleChannel(await remote.GetChannelsAsync(), desiredChannel);
+        return ResolveSingleChannel(await barClient.GetChannelsAsync(), desiredChannel);
     }
 
     public static string GetSubscriptionDescription(Subscription subscription)
@@ -123,7 +123,7 @@ public static class UxHelpers
     /// <returns>Description</returns>
     public static string GetTextBuildDescription(Build build)
     {
-        StringBuilder builder = new StringBuilder();
+        var builder = new StringBuilder();
         builder.AppendLine($"Repository:    {build.GitHubRepository ?? build.AzureDevOpsRepository}");
         builder.AppendLine($"Branch:        {build.GitHubBranch ?? build.AzureDevOpsBranch}");
         builder.AppendLine($"Commit:        {build.Commit}");
@@ -153,47 +153,47 @@ public static class UxHelpers
     /// <returns>Description string</returns>
     public static string GetMergePoliciesDescription(IEnumerable<MergePolicy> mergePolicies, string indent = "")
     {
-        StringBuilder builder = new StringBuilder();
+        var builder = new StringBuilder();
+        builder.Append($"{indent}- Merge Policies:");
 
-        if (mergePolicies.Any())
+        if (!mergePolicies.Any())
         {
-            builder.AppendLine($"{indent}- Merge Policies:");
-            foreach (MergePolicy mergePolicy in mergePolicies)
+            builder.AppendLine(" []");
+            return builder.ToString();
+        }
+
+        builder.AppendLine();
+        foreach (MergePolicy mergePolicy in mergePolicies)
+        {
+            builder.AppendLine($"{indent}  {mergePolicy.Name}");
+            if (mergePolicy.Properties != null)
             {
-                builder.AppendLine($"{indent}  {mergePolicy.Name}");
-                if (mergePolicy.Properties != null)
+                foreach (var mergePolicyProperty in mergePolicy.Properties)
                 {
-                    foreach (var mergePolicyProperty in mergePolicy.Properties)
+                    // The merge policy property is a key value pair.  For formatting, turn it into a string.
+                    // It's often a JToken, so handle appropriately
+                    // 1. If the number of lines in the string is 1, write on same line as key
+                    // 2. If the number of lines in the string is more than one, start on new
+                    //    line and indent.
+                    var valueString = mergePolicyProperty.Value.ToString();
+                    var valueLines = valueString.Split(Environment.NewLine);
+                    var keyString = $"{indent}    {mergePolicyProperty.Key} = ";
+                    builder.Append(keyString);
+                    if (valueLines.Length == 1)
                     {
-                        // The merge policy property is a key value pair.  For formatting, turn it into a string.
-                        // It's often a JToken, so handle appropriately
-                        // 1. If the number of lines in the string is 1, write on same line as key
-                        // 2. If the number of lines in the string is more than one, start on new
-                        //    line and indent.
-                        string valueString = mergePolicyProperty.Value.ToString();
-                        string[] valueLines = valueString.Split(System.Environment.NewLine);
-                        string keyString = $"{indent}    {mergePolicyProperty.Key} = ";
-                        builder.Append(keyString);
-                        if (valueLines.Length == 1)
+                        builder.AppendLine(valueString);
+                    }
+                    else
+                    {
+                        var indentString = new string(' ', keyString.Length);
+                        builder.AppendLine();
+                        foreach (string line in valueLines)
                         {
-                            builder.AppendLine(valueString);
-                        }
-                        else
-                        {
-                            string indentString = new string(' ', keyString.Length);
-                            builder.AppendLine();
-                            foreach (string line in valueLines)
-                            {
-                                builder.AppendLine($"{indent}{indentString}{line}");
-                            }
+                            builder.AppendLine($"{indent}{indentString}{line}");
                         }
                     }
                 }
             }
-        }
-        else
-        {
-            builder.AppendLine($"{indent}- Merge Policies: []");
         }
 
         return builder.ToString();
@@ -201,16 +201,29 @@ public static class UxHelpers
 
     public static string GetTextSubscriptionDescription(Subscription subscription, IEnumerable<MergePolicy> mergePolicies = null)
     {
-        StringBuilder subInfo = new StringBuilder();
+
+        var subInfo = new StringBuilder();
         subInfo.AppendLine($"{subscription.SourceRepository} ({subscription.Channel.Name}) ==> '{subscription.TargetRepository}' ('{subscription.TargetBranch}')");
         subInfo.AppendLine($"  - Id: {subscription.Id}");
         subInfo.AppendLine($"  - Update Frequency: {subscription.Policy.UpdateFrequency}");
         subInfo.AppendLine($"  - Enabled: {subscription.Enabled}");
         subInfo.AppendLine($"  - Batchable: {subscription.Policy.Batchable}");
         subInfo.AppendLine($"  - PR Failure Notification tags: {subscription.PullRequestFailureNotificationTags}");
+        subInfo.AppendLine($"  - Source-enabled: {subscription.SourceEnabled}");
+
+        string excludedAssets;
+        if (subscription.ExcludedAssets.Any())
+        {
+            excludedAssets = string.Join(Environment.NewLine + "    - ", [string.Empty, ..subscription.ExcludedAssets]);
+        }
+        else
+        {
+            excludedAssets = " []";
+        }
+        subInfo.AppendLine($"  - Excluded Assets:{excludedAssets}");
 
         IEnumerable<MergePolicy> policies = mergePolicies ?? subscription.Policy.MergePolicies;
-        subInfo.Append(UxHelpers.GetMergePoliciesDescription(policies, "  "));
+        subInfo.Append(GetMergePoliciesDescription(policies, "  "));
 
         // Currently the API only returns the last applied build for requests to specific subscriptions.
         // This will be fixed, but for now, don't print the last applied build otherwise.
@@ -224,7 +237,7 @@ public static class UxHelpers
 
     public static string DependencyToString(DependencyDetail dependency)
     {
-        StringBuilder dependencyBuilder = new StringBuilder();
+        var dependencyBuilder = new StringBuilder();
 
         dependencyBuilder.AppendLine($"Name:             {dependency.Name}");
         dependencyBuilder.AppendLine($"Version:          {dependency.Version}");
@@ -243,7 +256,7 @@ public static class UxHelpers
 
     public static string GetSimpleRepoName(string repoUri)
     {
-        int lastSlash = repoUri.LastIndexOf("/");
+        var lastSlash = repoUri.LastIndexOf("/");
         if ((lastSlash != -1) && (lastSlash < (repoUri.Length - 1)))
         {
             return repoUri.Substring(lastSlash + 1);
@@ -291,10 +304,10 @@ public static class UxHelpers
     /// <returns>String describing the default channel.</returns>
     public static string GetDefaultChannelDescriptionString(DefaultChannel defaultChannel)
     {
-        string disabled = !defaultChannel.Enabled ? " (Disabled)" : "";
+        var disabled = !defaultChannel.Enabled ? " (Disabled)" : "";
         // Pad so that id's up to 9999 will result in consistent
         // listing
-        string idPrefix = $"({defaultChannel.Id})".PadRight(7);
+        var idPrefix = $"({defaultChannel.Id})".PadRight(7);
         return $"{idPrefix}{defaultChannel.Repository} @ {defaultChannel.Branch} -> {defaultChannel.Channel.Name}{disabled}";
     }
 
@@ -311,22 +324,19 @@ public static class UxHelpers
     /// </remarks>
     public static StreamWriter GetOutputFileStreamOrConsole(string outputFile)
     {
-        StreamWriter outputStream = null;
-        if (!string.IsNullOrEmpty(outputFile))
+        if (string.IsNullOrEmpty(outputFile))
         {
-            string fullPath = Path.GetFullPath(outputFile);
-            string directory = Path.GetDirectoryName(fullPath);
-            if (!Directory.Exists(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-            outputStream = new StreamWriter(fullPath);
+            return new StreamWriter(Console.OpenStandardOutput());
         }
-        else
+        
+        var fullPath = Path.GetFullPath(outputFile);
+        var directory = Path.GetDirectoryName(fullPath);
+        if (!Directory.Exists(directory))
         {
-            outputStream = new StreamWriter(Console.OpenStandardOutput());
+            Directory.CreateDirectory(directory);
         }
-        return outputStream;
+
+        return new StreamWriter(fullPath);
     }
 
     /// <summary>

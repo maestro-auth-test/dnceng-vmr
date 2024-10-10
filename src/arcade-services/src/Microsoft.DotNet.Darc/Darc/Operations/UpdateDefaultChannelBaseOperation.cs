@@ -1,23 +1,22 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using Microsoft.DotNet.Darc.Helpers;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.DotNet.Darc.Options;
 using Microsoft.DotNet.DarcLib;
 using Microsoft.DotNet.Maestro.Client.Models;
 using Microsoft.DotNet.Services.Utility;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Microsoft.DotNet.Darc.Operations;
 
-abstract class UpdateDefaultChannelBaseOperation : Operation
+internal abstract class UpdateDefaultChannelBaseOperation : Operation
 
 {
-    UpdateDefaultChannelBaseCommandLineOptions _options;
+    private readonly UpdateDefaultChannelBaseCommandLineOptions _options;
 
     public UpdateDefaultChannelBaseOperation(UpdateDefaultChannelBaseCommandLineOptions options)
         : base(options)
@@ -32,9 +31,9 @@ abstract class UpdateDefaultChannelBaseOperation : Operation
     /// <returns>Default channel or null</returns>
     protected async Task<DefaultChannel> ResolveSingleChannel()
     {
-        IRemote remote = RemoteFactory.GetBarOnlyRemote(_options, Logger);
+        IBarApiClient barClient = Provider.GetRequiredService<IBarApiClient>();
 
-        IEnumerable<DefaultChannel> potentialDefaultChannels = await remote.GetDefaultChannelsAsync();
+        IEnumerable<DefaultChannel> potentialDefaultChannels = await barClient.GetDefaultChannelsAsync();
             
         // User should have supplied id or a combo of the channel name, repo, and branch.
         if (_options.Id != -1)

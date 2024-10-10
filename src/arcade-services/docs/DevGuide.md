@@ -10,7 +10,7 @@
     - Download and install the SSL cert used for local development from key vault
     - Configure the SQL Server LocalDB instance for use from the local Service Fabric cluster
 1. Make sure you have installed Entity Framework Core CLI by running `dotnet tool install --global dotnet-ef`
-1. From the Maestro.Data project directory, run `dotnet ef --msbuildprojectextensionspath <full path to obj dir for Maestro repo (e.g. "C:\arcade-services\artifacts\obj\Maestro.Data\")> database update`.
+1. From the `src\Maestro\Maestro.Data` project directory, run `dotnet ef --msbuildprojectextensionspath <full path to obj dir for Maestro repo (e.g. "C:\arcade-services\artifacts\obj\Maestro.Data\")> database update`.
     - Note that the generated files are in the root artifacts folder, not the artifacts folder within the Maestro.Data project folder
 1. Join the @maestro-auth-test org in GitHub (you will need to ask someone to manually add you to the org).
 1. In SQL Server Object Explorer in Visual Studio, find the local SQLExpress database for the build asset registry and populate the Repositories table with the following rows:
@@ -34,7 +34,7 @@ After successfully running `bootstrap.ps1` running the `MaestroApplication` proj
 
 Maestro.Web uses Azure AppConfiguration (AAC) to dynamically enable/disable automatic build to channel assignment. AAC works basically as a KeyVault, however it doesn't need to necessarily store secrets. We use Azure Managed Service Identity (AMSI) to authenticate to AAC. 
 
-##### Useful resources about AAC: 
+##### Useful resources about AAC:
 
 - https://docs.microsoft.com/en-us/azure/azure-app-configuration/overview
 - https://zimmergren.net/introduction-azure-app-configuration-store-csharp-dotnetcore/
@@ -64,6 +64,53 @@ Since Visual Studio's Debug Environment variable settings do not apply to debugg
 
 When debugging the tests, you can check this via the Immediate window, e.g. by running `System.Environment.GetEnvironmentVariable("GITHUB_TOKEN")`
 
+## Changing the database model
+
+In case you need to change the database model (e.g. add a column to a table), follow the usual [EF Core code-first migration steps](https://learn.microsoft.com/en-us/ef/core/managing-schemas/migrations/?tabs=dotnet-core-cli#evolving-your-model).
+In practice this means the following:
+1. Make the change to the model classes in the `Maestro.Data` project
+1. Install the [EF Core CLI](https://docs.microsoft.com/en-us/ef/core/cli/dotnet)
+  ```ps1
+  dotnet tool install --global dotnet-ef
+  ```
+1. Go to the `src\Maestro\Maestro.Data` project directory and build the project
+  ```ps1
+  cd src\Maestro\Maestro.Data
+  dotnet build
+  ```
+1. Run the following command to create a new migration
+  ```ps1
+  dotnet ef --msbuildprojectextensionspath <full path to obj dir for Maestro repo (e.g. "C:\arcade-services\artifacts\obj\Maestro.Data")> migrations add <migration name>
+  ```
+
+The steps above will produce a new migration file which will later be processed by the CI pipeline on the real database.  
+Test this migration locally by running:
+```ps1
+dotnet ef --msbuildprojectextensionspath <full path to obj dir for Maestro repo (e.g. "C:\arcade-services\artifacts\obj\Maestro.Data")> database update
+```
+You should see something like:
+```
+Build started...
+Build succeeded.
+Applying migration '20240201144006_<migration name>'.
+Done.
+```
+
+If your change of the model changes the public API of the service, update also the `Maestro.Client`.
+
+## Changing the API / Updating `Maestro.Client`
+
+`Maestro.Client` is an auto-generated client library for the Maestro API. It is generated using Swagger Codegen which parses the `swagger.json` file.
+The `swagger.json` file is accessible at `/api/swagger.json` when the Maestro application is running.
+If you changed the API (e.g. changed an endpoint, model coming from the API, etc.), you need to regenerate the `Maestro.Client` library.
+
+If you need to update the client library, follow these steps:
+
+1. Change the model/endpoint/..
+1. Change `src\Maestro\Client\src\Microsoft.DotNet.Maestro.Client.csproj` and point the `SwaggerDocumentUri` to `http://127.0.0.1:8088/api/swagger.json`.
+1. Start the Maestro application locally, verify you can access the swagger.json file. You can now stop debugging, the local SF cluster will keep running.
+1. Run `src\Maestro\Client\src\generate-client.cmd` which will regenerate the C# classes.
+1. You might see code-style changes in the C# classes as the SDK of the repo has now been updated. You can quickly use the Visual Studio's refactorings to fix those and minimize the code changes in this project.
 
 ## Troubleshooting
 
@@ -75,8 +122,21 @@ Things to try:
 - If you are using your own PATs for debugging tests, your account needs to have permissions to the repositories involved and include appropriate scopes (default is just 'public')
 - To build the packages folder starting from a clean repository, run **desktop** `nuget restore arcade-services.sln` then **desktop** `msbuild arcade-services.sln /t:Restore,Build,Pack`.  Non-desktop versions of build, including dotnet.exe, will fail building the .sfproj projects and then not pack the nupkgs.
 - Seeing errors like
+    ```
+    EXEC : gyp verb `which` failed error : not found: python2 [E:\gh\chcosta\arcade-services\src\Maestro\maestro-angular\maestro-angular.proj]
+    EXEC : gyp verb `which` failed  python2 error : not found: python2 [E:\gh\chcosta\arcade-services\src\Maestro\maestro-angular\maestro-angular.proj]
+    ```
+    Make sure python 2.7 is installed and on your path.  You may have to copy `python27\python.exe` to `python27\python2.exe`
+- if DNS Service is enabled for the cluster, Service Fabric will automaticaly edit the DNS settings for your machine and add SF as first DNS server which sometimes causes issues with DNS resolution and you may not be able to access any webpages. There is information about the issue in https://github.com/microsoft/service-fabric/issues/124
+
+## Configuring a dev cluster
+The script that sets up a local Service Fabric cluster is `C:\Program Files\Microsoft SDKs\Service Fabric\ClusterSetup\DevClusterSetup.ps1`
+Configuration files are in the folders `Secure\OneNode`, `Secure\FiveNode`, `NonSecure\OneNode`, `NonSecure\FiveNode` depending if the cluster is secure/nonsecure and the number of nodes. By default the local cluster is not secure. Once the cluster is set up all the configuration is stored in `C:\SFDevCluster\Data`, you can see logs in `C:\SFDevCluster\Log`
+You can disable the DNS Service by deleting `DnsService` from the add-on features in `ClusterManifestTemplate.json`
 ```
-EXEC : gyp verb `which` failed error : not found: python2 [E:\gh\chcosta\arcade-services\src\Maestro\maestro-angular\maestro-angular.proj]
-EXEC : gyp verb `which` failed  python2 error : not found: python2 [E:\gh\chcosta\arcade-services\src\Maestro\maestro-angular\maestro-angular.proj]
+    "addOnFeatures": [
+      "EventStoreService",
+      "DnsService"
+    ]
 ```
-  Make sure python 2.7 is installed and on your path.  You may have to copy `python27\python.exe` to `python27\python2.exe`
+If you change any settings in `ClusterManifestTemplate.json` run `Reset Local Cluster` from Service Fabric Local Cluster Manager to recreate the cluster configuration using the new settings
