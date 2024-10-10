@@ -11,6 +11,7 @@ internal abstract class VmrSyncCommandLineOptions : VmrCommandLineOptions, IBase
     [Option("additional-remotes", Required = false, HelpText =
         "List of additional remote URIs to add to mappings in the format [mapping name]:[remote URI]. " +
         "Example: installer:https://github.com/myfork/installer sdk:/local/path/to/sdk")]
+    [RedactFromLogging]
     public IEnumerable<string> AdditionalRemotes { get; set; }
     
     [Value(0, Required = true, HelpText =
@@ -18,8 +19,8 @@ internal abstract class VmrSyncCommandLineOptions : VmrCommandLineOptions, IBase
         "Omitting REVISION will synchronize the repo to current HEAD.")]
     public IEnumerable<string> Repositories { get; set; }
 
-    [Option("readme-template", Required = false, HelpText = "Path to a template for generating VMRs README file. Leave empty to skip generation.")]
-    public string ReadMeTemplate { get; set; }
+    [Option("component-template", Required = false, HelpText = "Path to a template for generating VMRs Component.md file. Leave empty to skip generation.")]
+    public string ComponentTemplate { get; set; }
 
     [Option("tpn-template", Required = false, HelpText = "Path to a template for generating VMRs THIRD-PARTY-NOTICES file. Leave empty to skip generation.")]
     public string TpnTemplate { get; set; }

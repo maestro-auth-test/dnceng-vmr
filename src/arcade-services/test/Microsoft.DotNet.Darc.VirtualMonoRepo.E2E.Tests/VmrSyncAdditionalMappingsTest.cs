@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
-using Microsoft.DotNet.DarcLib;
 using Microsoft.DotNet.DarcLib.Helpers;
 using Microsoft.DotNet.DarcLib.Models.VirtualMonoRepo;
 using Microsoft.DotNet.DarcLib.VirtualMonoRepo;
@@ -14,7 +13,7 @@ using NUnit.Framework;
 namespace Microsoft.DotNet.Darc.Tests.VirtualMonoRepo;
 
 [TestFixture]
-public class VmrSyncAdditionalMappingsTest : VmrTestsBase
+internal class VmrSyncAdditionalMappingsTest : VmrTestsBase
 {
     private readonly string _fileName = "special-file.txt";
     private readonly string _fileRelativePath = new NativePath("content") / "special-file.txt";
@@ -26,7 +25,7 @@ public class VmrSyncAdditionalMappingsTest : VmrTestsBase
 
         await InitializeRepoAtLastCommit(Constants.ProductRepoName, ProductRepoPath);
 
-        var expectedFilesFromRepos = new List<LocalPath>
+        var expectedFilesFromRepos = new List<NativePath>
         {
             VmrPath / VmrInfo.SourcesDir / Constants.ProductRepoName / Constants.GetRepoFileName(Constants.ProductRepoName),
             VmrPath / VmrInfo.SourcesDir / Constants.ProductRepoName / _fileRelativePath,
@@ -35,7 +34,7 @@ public class VmrSyncAdditionalMappingsTest : VmrTestsBase
 
         var expectedFiles = GetExpectedFilesInVmr(
             VmrPath,
-            new[] { Constants.ProductRepoName },
+            [Constants.ProductRepoName],
             expectedFilesFromRepos
         );
 
@@ -56,7 +55,7 @@ public class VmrSyncAdditionalMappingsTest : VmrTestsBase
 
     protected override async Task CopyReposForCurrentTest()
     {
-        await CopyRepoAndCreateVersionDetails(CurrentTestDirectory, Constants.ProductRepoName);
+        await CopyRepoAndCreateVersionFiles(Constants.ProductRepoName);
         
         Directory.CreateDirectory(ProductRepoPath / "content");
         File.WriteAllText(
@@ -72,31 +71,31 @@ public class VmrSyncAdditionalMappingsTest : VmrTestsBase
 
         var sourceMappings = new SourceMappingFile()
         {
-            Mappings = new List<SourceMappingSetting>
-            {
+            Mappings =
+            [
                 new SourceMappingSetting
                 {
                     Name = Constants.ProductRepoName,
                     DefaultRemote = ProductRepoPath
                 }
-            },
-            AdditionalMappings = new List<AdditionalMappingSetting>
-            {
+            ],
+            AdditionalMappings =
+            [
                 new AdditionalMappingSetting
                 {
                     Source = new UnixPath(VmrInfo.SourcesDir) / Constants.ProductRepoName / "content",
                     Destination = ""
                 }
-            }
+            ]
         };
 
-        sourceMappings.Defaults.Exclude = new[]
-        {
+        sourceMappings.Defaults.Exclude =
+        [
             "externals/external-repo/**/*.exe",
             "excluded/*",
             "**/*.dll",
             "**/*.Dll",
-        };
+        ];
 
         await WriteSourceMappingsInVmr(sourceMappings);
     }

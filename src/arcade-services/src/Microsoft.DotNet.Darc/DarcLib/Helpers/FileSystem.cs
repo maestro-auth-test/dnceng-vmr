@@ -29,6 +29,8 @@ public class FileSystem : IFileSystem
 
     public string? GetFileName(string? path) => Path.GetFileName(path);
 
+    public string GetTempFileName() => Path.GetTempFileName();
+
     public string PathCombine(string path1, string path2) => Path.Combine(path1, path2);
 
     public void WriteToFile(string path, string content)
@@ -45,4 +47,31 @@ public class FileSystem : IFileSystem
     public IFileInfo GetFileInfo(string path) => new FileInfoWrapper(path);
 
     public Task<string> ReadAllTextAsync(string path) => File.ReadAllTextAsync(path);
+
+    public void CopyDirectory(string sourceDir, string destinationDir, bool recursive)
+    {
+        var dir = new DirectoryInfo(sourceDir);
+        if (!dir.Exists)
+        {
+            throw new DirectoryNotFoundException($"Source directory not found: {dir.FullName}");
+        }
+
+        DirectoryInfo[] dirs = dir.GetDirectories();
+        Directory.CreateDirectory(destinationDir);
+
+        foreach (FileInfo file in dir.GetFiles())
+        {
+            string targetFilePath = Path.Combine(destinationDir, file.Name);
+            file.CopyTo(targetFilePath);
+        }
+
+        if (recursive)
+        {
+            foreach (DirectoryInfo subDir in dirs)
+            {
+                string newDestinationDir = Path.Combine(destinationDir, subDir.Name);
+                CopyDirectory(subDir.FullName, newDestinationDir, true);
+            }
+        }
+    }
 }
