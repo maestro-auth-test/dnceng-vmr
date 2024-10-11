@@ -1,23 +1,23 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using Microsoft.DotNet.Darc.Helpers;
-using Microsoft.DotNet.Darc.Options;
-using Microsoft.DotNet.DarcLib;
-using Microsoft.DotNet.Maestro.Client;
-using Microsoft.DotNet.Maestro.Client.Models;
-using Microsoft.Extensions.Logging;
 using System;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Microsoft.DotNet.Darc.Options;
+using Microsoft.DotNet.DarcLib;
+using Microsoft.DotNet.Maestro.Client;
+using Microsoft.DotNet.Maestro.Client.Models;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Microsoft.DotNet.Darc.Operations;
 
 internal class GetDependencyFlowGraphOperation : Operation
 {
-    private GetDependencyFlowGraphCommandLineOptions _options;
+    private readonly GetDependencyFlowGraphCommandLineOptions _options;
 
     public GetDependencyFlowGraphOperation(GetDependencyFlowGraphCommandLineOptions options)
         : base(options)
@@ -25,28 +25,25 @@ internal class GetDependencyFlowGraphOperation : Operation
         _options = options;
     }
 
-    const int engLatestChannelId = 2;
-    const int eng3ChannelId = 344;
-
     public override async Task<int> ExecuteAsync()
     {
         try
         {
-            RemoteFactory remoteFactory = new RemoteFactory(_options);
-            var barOnlyRemote = await remoteFactory.GetBarOnlyRemoteAsync(Logger);
+            IRemoteFactory remoteFactory = Provider.GetRequiredService<IRemoteFactory>();
+            IBarApiClient barClient = Provider.GetRequiredService<IBarApiClient>();
 
             Channel targetChannel = null;
             if (!string.IsNullOrEmpty(_options.Channel))
             {
                 // Resolve the channel.
-                targetChannel = await UxHelpers.ResolveSingleChannel(barOnlyRemote, _options.Channel);
+                targetChannel = await UxHelpers.ResolveSingleChannel(barClient, _options.Channel);
                 if (targetChannel == null)
                 {
                     return Constants.ErrorCode;
                 }
             }
 
-            var flowGraph = await barOnlyRemote.GetDependencyFlowGraphAsync(
+            var flowGraph = await barClient.GetDependencyFlowGraphAsync(
                 targetChannel?.Id ?? 0,
                 _options.Days,
                 includeArcade: true,
@@ -75,23 +72,16 @@ internal class GetDependencyFlowGraphOperation : Operation
     /// </summary>
     /// <param name="edge"></param>
     /// <returns></returns>
-    private string GetEdgeStyle(DependencyFlowEdge edge)
+    private static string GetEdgeStyle(DependencyFlowEdge edge)
     {
         string color = edge.OnLongestBuildPath ? "color=\"red:invis:red\"" : "";
-        switch (edge.Subscription.Policy.UpdateFrequency)
+        return edge.Subscription.Policy.UpdateFrequency switch
         {
-            case UpdateFrequency.EveryBuild:
-                // Solid
-                return $"{color} style=bold";
-            case UpdateFrequency.EveryDay:
-            case UpdateFrequency.TwiceDaily:
-            case UpdateFrequency.EveryWeek:
-                return $"{color} style=dashed";
-            case UpdateFrequency.None:
-                return $"{color} style=dotted";
-            default:
-                throw new NotImplementedException("Unknown update frequency");
-        }
+            UpdateFrequency.EveryBuild => $"{color} style=bold",// Solid
+            UpdateFrequency.EveryDay or UpdateFrequency.TwiceDaily or UpdateFrequency.EveryWeek => $"{color} style=dashed",
+            UpdateFrequency.None => $"{color} style=dotted",
+            _ => throw new NotImplementedException("Unknown update frequency"),
+        };
     }
 
     /// <summary>

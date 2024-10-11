@@ -5,14 +5,13 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using Microsoft.DotNet.DarcLib.Helpers;
-using Microsoft.DotNet.DarcLib.VirtualMonoRepo;
 using NUnit.Framework;
 
 
 namespace Microsoft.DotNet.Darc.Tests.VirtualMonoRepo;
 
 [TestFixture]
-public class VmrPatchRemovingFileTest : VmrPatchesTestsBase
+internal class VmrPatchRemovingFileTest : VmrPatchesTestsBase
 {
     public VmrPatchRemovingFileTest() : base("remove-file.patch")
     {
@@ -26,7 +25,7 @@ public class VmrPatchRemovingFileTest : VmrPatchesTestsBase
         await InitializeRepoAtLastCommit(Constants.InstallerRepoName, InstallerRepoPath);
         await InitializeRepoAtLastCommit(Constants.ProductRepoName, ProductRepoPath);
 
-        var expectedFilesFromRepos = new List<LocalPath>
+        var expectedFilesFromRepos = new List<NativePath>
         {
             VmrPatchesDir / PatchFileName,
             InstallerFilePathInVmr
@@ -34,7 +33,7 @@ public class VmrPatchRemovingFileTest : VmrPatchesTestsBase
 
         var expectedFiles = GetExpectedFilesInVmr(
             VmrPath,
-            new[] { Constants.ProductRepoName, Constants.InstallerRepoName },
+            [Constants.ProductRepoName, Constants.InstallerRepoName],
             expectedFilesFromRepos);
 
         CheckDirectoryContents(VmrPath, expectedFiles);

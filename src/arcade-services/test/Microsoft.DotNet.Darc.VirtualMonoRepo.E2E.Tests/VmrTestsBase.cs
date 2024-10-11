@@ -10,7 +10,6 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Microsoft.DotNet.Darc.Helpers;
 using Microsoft.DotNet.Darc.Models.VirtualMonoRepo;
 using Microsoft.DotNet.DarcLib;
 using Microsoft.DotNet.DarcLib.Helpers;
@@ -20,10 +19,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NUnit.Framework;
 
-
 namespace Microsoft.DotNet.Darc.Tests.VirtualMonoRepo;
 
-public abstract class VmrTestsBase
+internal abstract class VmrTestsBase
 {
     protected NativePath CurrentTestDirectory { get; private set; } = null!;
     protected NativePath ProductRepoPath { get; private set; } = null!;
@@ -33,7 +31,6 @@ public abstract class VmrTestsBase
     protected NativePath DependencyRepoPath { get; private set; } = null!;
     protected NativePath InstallerRepoPath { get; private set; } = null!;
     protected GitOperationsHelper GitOperations { get; } = new();
-    protected VmrInfo Info { get; private set; } = null!;
     
     private Lazy<IServiceProvider> _serviceProvider = null!;
     private readonly CancellationTokenSource _cancellationToken = new();
@@ -57,8 +54,7 @@ public abstract class VmrTestsBase
         await CopyReposForCurrentTest();
         await CopyVmrForCurrentTest();
         
-        _serviceProvider = new(CreateServiceProvider);
-        Info = (VmrInfo)_serviceProvider.Value.GetRequiredService<IVmrInfo>();
+        _serviceProvider = new Lazy<IServiceProvider>(() => CreateServiceProvider().BuildServiceProvider());
     }
 
     [TearDown]
@@ -81,35 +77,52 @@ public abstract class VmrTestsBase
 
     protected abstract Task CopyVmrForCurrentTest();
 
-    private IServiceProvider CreateServiceProvider() => new ServiceCollection()
-        .AddLogging(b => b.AddConsole().AddFilter(l => l >= LogLevel.Information))
+    protected virtual IServiceCollection CreateServiceProvider() => new ServiceCollection()
+        .AddLogging(b => b.AddConsole().AddFilter(l => l >= LogLevel.Debug))
         .AddVmrManagers("git", VmrPath, TmpPath, null, null)
-        .BuildServiceProvider();
+        .AddSingleton<IBasicBarClient>(new BarApiClient(buildAssetRegistryPat: null));
 
-    protected List<LocalPath> GetExpectedFilesInVmr(
-        LocalPath vmrPath,
-        string[] syncedRepos,
-        List<LocalPath> reposFiles)
+    protected static List<NativePath> GetExpectedFilesInVmr(
+        NativePath vmrPath,
+        string[] reposWithVersionFiles,
+        List<NativePath> reposFiles,
+        bool hasVersionFiles = false)
     {
-        var expectedFiles = new List<LocalPath>
-        {
+        List<NativePath> expectedFiles =
+        [
             vmrPath / VmrInfo.GitInfoSourcesDir / AllVersionsPropsFile.FileName,
-            Info.GetSourceManifestPath(),
-            vmrPath / VmrInfo.SourcesDir / VmrInfo.SourceMappingsFileName
-        };
+            vmrPath / VmrInfo.DefaultRelativeSourceManifestPath,
+            vmrPath / VmrInfo.DefaultRelativeSourceMappingsPath,
+        ];
 
-        foreach (var repo in syncedRepos)
+        foreach (var repo in reposWithVersionFiles)
         {
-            expectedFiles.Add(vmrPath / VmrInfo.SourcesDir / repo / VersionFiles.VersionDetailsXml);
+            expectedFiles.AddRange(GetExpectedVersionFiles(vmrPath / VmrInfo.SourcesDir / repo));
             expectedFiles.Add(vmrPath / VmrInfo.GitInfoSourcesDir / $"{repo}.props");
         }
 
         expectedFiles.AddRange(reposFiles);
 
+        if (hasVersionFiles)
+        {
+            expectedFiles.AddRange(GetExpectedVersionFiles(vmrPath));
+        }
+
         return expectedFiles;
     }
 
-    protected void CheckDirectoryContents(string directory, IList<LocalPath> expectedFiles)
+    protected static string[] GetExpectedVersionFiles() =>
+    [
+        VersionFiles.VersionDetailsXml,
+        VersionFiles.VersionProps,
+        VersionFiles.GlobalJson,
+        VersionFiles.NugetConfig,
+    ];
+
+    protected static IEnumerable<NativePath> GetExpectedVersionFiles(NativePath repoPath)
+        => GetExpectedVersionFiles().Select(file => repoPath / file);
+
+    protected static void CheckDirectoryContents(string directory, IList<NativePath> expectedFiles)
     {
         var filesInDir = GetAllFilesInDirectory(new DirectoryInfo(directory));
         filesInDir.Should().BeEquivalentTo(expectedFiles);
@@ -127,7 +140,7 @@ public abstract class VmrTestsBase
         fileContent.Should().BeEquivalentTo(expectedLines);
     }
 
-    protected void CompareFileContents(NativePath filePath, string resourceFileName)
+    protected static void CompareFileContents(NativePath filePath, string resourceFileName)
     {
         var resourceContent = File.ReadAllLines(VmrTestsOneTimeSetUp.ResourcesPath / resourceFileName);
         CheckFileContents(filePath, resourceContent);
@@ -136,7 +149,7 @@ public abstract class VmrTestsBase
     protected async Task InitializeRepoAtLastCommit(string repoName, NativePath repoPath, LocalPath? sourceMappingsPath = null)
     {
         var commit = await GitOperations.GetRepoLastCommit(repoPath);
-        var sourceMappings = sourceMappingsPath ?? VmrPath / VmrInfo.SourcesDir / VmrInfo.SourceMappingsFileName;
+        var sourceMappings = sourceMappingsPath ?? VmrPath / VmrInfo.DefaultRelativeSourceMappingsPath;
         await CallDarcInitialize(repoName, commit, sourceMappings);
     }
 
@@ -154,13 +167,25 @@ public abstract class VmrTestsBase
 
     protected async Task CallDarcUpdate(string repository, string commit, bool generateCodeowners = false)
     {
-        await CallDarcUpdate(repository, commit, Array.Empty<AdditionalRemote>(), generateCodeowners);
+        await CallDarcUpdate(repository, commit, [], generateCodeowners);
     }
 
     protected async Task CallDarcUpdate(string repository, string commit, AdditionalRemote[] additionalRemotes, bool generateCodeowners = false)
     {
         var vmrUpdater = _serviceProvider.Value.GetRequiredService<IVmrUpdater>();
         await vmrUpdater.UpdateRepository(repository, commit, null, true, additionalRemotes, null, null, generateCodeowners, true, _cancellationToken.Token);
+    }
+
+    protected async Task<string?> CallDarcBackflow(string mappingName, NativePath repoPath, string? shaToFlow = null, int? buildToFlow = null)
+    {
+        var codeflower = _serviceProvider.Value.GetRequiredService<IVmrBackFlower>();
+        return await codeflower.FlowBackAsync(mappingName, repoPath, shaToFlow, buildToFlow, cancellationToken: _cancellationToken.Token);
+    }
+
+    protected async Task<string?> CallDarcForwardflow(string mappingName, NativePath repoPath, string? shaToFlow = null, int? buildToFlow = null)
+    {
+        var codeflower = _serviceProvider.Value.GetRequiredService<IVmrForwardFlower>();
+        return await codeflower.FlowForwardAsync(mappingName, repoPath, shaToFlow, buildToFlow, cancellationToken: _cancellationToken.Token);
     }
 
     protected async Task<List<string>> CallDarcCloakedFileScan(string baselinesFilePath)
@@ -175,7 +200,7 @@ public abstract class VmrTestsBase
         return await binaryFileScanner.ScanVmr(baselinesFilePath, _cancellationToken.Token);
     }
 
-    protected void CopyDirectory(string source, LocalPath destination)
+    protected static void CopyDirectory(string source, LocalPath destination)
     {
         if (!Directory.Exists(destination))
         {
@@ -197,7 +222,7 @@ public abstract class VmrTestsBase
         }
     }
 
-    private ICollection<LocalPath> GetAllFilesInDirectory(DirectoryInfo directory)
+    private static ICollection<LocalPath> GetAllFilesInDirectory(DirectoryInfo directory)
     {
         var files = new List<LocalPath>();
 
@@ -216,33 +241,46 @@ public abstract class VmrTestsBase
         return files;
     }
 
-    protected async Task<string> CopyRepoAndCreateVersionDetails(
-        NativePath currentTestDir,
+    protected async Task<string> CopyRepoAndCreateVersionFiles(
         string repoName,
-        IDictionary<string, List<string>>? dependencies = null)
+        Dictionary<string, List<string>>? dependencies = null)
     {
-        var repoPath = currentTestDir / repoName;
+        var repoPath = CurrentTestDirectory / repoName;
         
         var dependenciesString = new StringBuilder();
+        var propsString = new StringBuilder();
         if (dependencies != null && dependencies.ContainsKey(repoName))
         {
             var repoDependencies = dependencies[repoName];
             foreach (var dependencyName in repoDependencies)
             {
-                string sha = await CopyRepoAndCreateVersionDetails(currentTestDir, dependencyName, dependencies);
+                string sha = await CopyRepoAndCreateVersionFiles(dependencyName, dependencies);
                 dependenciesString.AppendLine(
                     string.Format(
                         Constants.DependencyTemplate,
-                        new[] { dependencyName, currentTestDir/ dependencyName, sha }));
+                        new[] { dependencyName, CurrentTestDirectory / dependencyName, sha }));
+
+                var propsName = VersionFiles.GetVersionPropsPackageVersionElementName(dependencyName);
+                propsString.AppendLine($"<{propsName}>{sha}</{propsName}>");
             }
         }
 
         if (!Directory.Exists(repoPath))
         {
             CopyDirectory(VmrTestsOneTimeSetUp.TestsDirectory / repoName, repoPath);
+
             var versionDetails = string.Format(Constants.VersionDetailsTemplate, dependenciesString);
+            Directory.CreateDirectory(repoPath / "eng");
             File.WriteAllText(repoPath / VersionFiles.VersionDetailsXml, versionDetails);
-            await GitOperations.CommitAll(repoPath, "update version details");
+
+            var versionProps = string.Format(Constants.VersionPropsTemplate, propsString);
+            File.WriteAllText(repoPath / VersionFiles.VersionProps, versionProps);
+
+            File.WriteAllText(repoPath / VersionFiles.GlobalJson, Constants.GlobalJsonTemplate);
+
+            File.WriteAllText(repoPath / VersionFiles.NugetConfig, Constants.NuGetConfigTemplate);
+
+            await GitOperations.CommitAll(repoPath, "Update version files");
         }
 
         return await GitOperations.GetRepoLastCommit(repoPath);
@@ -257,9 +295,13 @@ public abstract class VmrTestsBase
             DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault
         };
 
-        File.WriteAllText(VmrPath / VmrInfo.SourcesDir / VmrInfo.SourceMappingsFileName,
+        File.WriteAllText(VmrPath / VmrInfo.DefaultRelativeSourceMappingsPath,
             JsonSerializer.Serialize(sourceMappings, settings));
         
         await GitOperations.CommitAll(VmrPath, "Add source mappings");
     }
+
+    // Needed for some local git operations
+    protected Local GetLocal(NativePath repoPath) => ActivatorUtilities.CreateInstance<Local>(_serviceProvider.Value, repoPath.ToString());
+    protected DependencyFileManager GetDependencyFileManager() => ActivatorUtilities.CreateInstance<DependencyFileManager>(_serviceProvider.Value);
 }
