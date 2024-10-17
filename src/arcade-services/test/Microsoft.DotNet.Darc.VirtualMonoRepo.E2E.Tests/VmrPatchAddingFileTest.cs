@@ -12,7 +12,7 @@ using NUnit.Framework;
 namespace Microsoft.DotNet.Darc.Tests.VirtualMonoRepo;
 
 [TestFixture]
-public class VmrPatchAddingFileTest : VmrPatchesTestsBase
+internal class VmrPatchAddingFileTest : VmrPatchesTestsBase
 {
     private readonly string _productRepoNewFile = "new-file.txt";
 
@@ -32,7 +32,7 @@ public class VmrPatchAddingFileTest : VmrPatchesTestsBase
         var newFilePath = vmrSourcesPath / Constants.ProductRepoName / _productRepoNewFile;
         var patchPath = VmrPatchesDir / PatchFileName;
 
-        var expectedFilesFromRepos = new List<LocalPath>
+        var expectedFilesFromRepos = new List<NativePath>
         {
             ProductRepoFilePathInVmr,
             InstallerFilePathInVmr,
@@ -42,7 +42,7 @@ public class VmrPatchAddingFileTest : VmrPatchesTestsBase
 
         var expectedFiles = GetExpectedFilesInVmr(
             VmrPath,
-            new[] { Constants.ProductRepoName, Constants.InstallerRepoName },
+            [Constants.ProductRepoName, Constants.InstallerRepoName],
             expectedFilesFromRepos);
 
         CheckDirectoryContents(VmrPath, expectedFiles);

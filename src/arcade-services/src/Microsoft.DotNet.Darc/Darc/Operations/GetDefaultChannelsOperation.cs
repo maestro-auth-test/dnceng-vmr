@@ -1,16 +1,16 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using Microsoft.DotNet.Darc.Helpers;
-using Microsoft.DotNet.Darc.Options;
-using Microsoft.DotNet.DarcLib;
-using Microsoft.DotNet.Maestro.Client;
-using Microsoft.DotNet.Maestro.Client.Models;
-using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.DotNet.Darc.Options;
+using Microsoft.DotNet.DarcLib;
+using Microsoft.DotNet.Maestro.Client;
+using Microsoft.DotNet.Maestro.Client.Models;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Microsoft.DotNet.Darc.Operations;
 
@@ -19,7 +19,7 @@ namespace Microsoft.DotNet.Darc.Operations;
 /// </summary>
 internal class GetDefaultChannelsOperation : Operation
 {
-    GetDefaultChannelsCommandLineOptions _options;
+    private readonly GetDefaultChannelsCommandLineOptions _options;
     public GetDefaultChannelsOperation(GetDefaultChannelsCommandLineOptions options)
         : base(options)
     {
@@ -35,9 +35,9 @@ internal class GetDefaultChannelsOperation : Operation
     {
         try
         {
-            IRemote remote = RemoteFactory.GetBarOnlyRemote(_options, Logger);
+            IBarApiClient barClient = Provider.GetRequiredService<IBarApiClient>();
 
-            IEnumerable<DefaultChannel> defaultChannels = (await remote.GetDefaultChannelsAsync())
+            IEnumerable<DefaultChannel> defaultChannels = (await barClient.GetDefaultChannelsAsync())
                 .Where(defaultChannel =>
                 {
                     return (string.IsNullOrEmpty(_options.SourceRepository) ||
@@ -49,7 +49,7 @@ internal class GetDefaultChannelsOperation : Operation
                 })
                 .OrderBy(df => df.Repository);
 
-            if (defaultChannels.Count() == 0)
+            if (!defaultChannels.Any())
             {
                 Console.WriteLine("No matching channels were found.");
             }

@@ -1,14 +1,11 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-#nullable enable
-
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Threading.Tasks;
-using Microsoft.DotNet.Darc.Helpers;
 using Microsoft.DotNet.Darc.Options;
 using Microsoft.DotNet.DarcLib;
 using Microsoft.DotNet.Maestro.Client;
@@ -17,12 +14,13 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 
+#nullable enable
 namespace Microsoft.DotNet.Darc.Operations;
 
 /// <summary>
 /// Retrieves a list of subscriptions based on input information
 /// </summary>
-class GetSubscriptionsOperation : Operation
+internal class GetSubscriptionsOperation : Operation
 {
     private readonly GetSubscriptionsCommandLineOptions _options;
 
@@ -36,9 +34,9 @@ class GetSubscriptionsOperation : Operation
     {
         try
         {
-            IRemote remote = Provider.GetService<IRemote>() ??  RemoteFactory.GetBarOnlyRemote(_options, Logger);
+            IBarApiClient barClient = Provider.GetRequiredService<IBarApiClient>();
 
-            IEnumerable<Subscription> subscriptions = await _options.FilterSubscriptions(remote);
+            IEnumerable<Subscription> subscriptions = await _options.FilterSubscriptions(barClient);
 
             if (!subscriptions.Any())
             {
@@ -49,10 +47,10 @@ class GetSubscriptionsOperation : Operation
             switch (_options.OutputFormat)
             {
                 case DarcOutputType.json:
-                    await OutputJsonAsync(subscriptions, remote);
+                    await OutputJsonAsync(subscriptions, barClient);
                     break;
                 case DarcOutputType.text:
-                    await OutputTextAsync(subscriptions, remote);
+                    await OutputTextAsync(subscriptions, barClient);
                     break;
                 default:
                     throw new NotImplementedException($"Output type {_options.OutputFormat} not supported by get-subscriptions");
@@ -79,14 +77,14 @@ class GetSubscriptionsOperation : Operation
             _ => base.IsOutputFormatSupported(outputFormat),
         };
 
-    private static async Task OutputJsonAsync(IEnumerable<Subscription> subscriptions, IRemote remote)
+    private static async Task OutputJsonAsync(IEnumerable<Subscription> subscriptions, IBarApiClient barClient)
     {
         foreach (var subscription in Sort(subscriptions))
         {
             // If batchable, the merge policies come from the repository
             if (subscription.Policy.Batchable)
             {
-                IEnumerable<MergePolicy> repoMergePolicies = await remote.GetRepositoryMergePoliciesAsync(subscription.TargetRepository, subscription.TargetBranch);
+                IEnumerable<MergePolicy> repoMergePolicies = await barClient.GetRepositoryMergePoliciesAsync(subscription.TargetRepository, subscription.TargetBranch);
                 if (!repoMergePolicies.Any())
                 {
                     continue;
@@ -100,7 +98,7 @@ class GetSubscriptionsOperation : Operation
         Console.WriteLine(JsonConvert.SerializeObject(subscriptions, Formatting.Indented));
     }
 
-    private static async Task OutputTextAsync(IEnumerable<Subscription> subscriptions, IRemote remote)
+    private static async Task OutputTextAsync(IEnumerable<Subscription> subscriptions, IBarApiClient barClient)
     {
         foreach (var subscription in Sort(subscriptions))
         {
@@ -108,7 +106,7 @@ class GetSubscriptionsOperation : Operation
             IEnumerable<MergePolicy> mergePolicies = subscription.Policy.MergePolicies;
             if (subscription.Policy.Batchable)
             {
-                mergePolicies = await remote.GetRepositoryMergePoliciesAsync(subscription.TargetRepository, subscription.TargetBranch);
+                mergePolicies = await barClient.GetRepositoryMergePoliciesAsync(subscription.TargetRepository, subscription.TargetBranch);
             }
 
             string subscriptionInfo = UxHelpers.GetTextSubscriptionDescription(subscription, mergePolicies);
