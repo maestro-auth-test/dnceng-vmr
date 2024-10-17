@@ -16,7 +16,6 @@ namespace DependencyUpdater.Tests;
 public class DependencyRegistrationTests
 {
     [Test]
-    [Ignore("Needs https://github.com/dotnet/dnceng-shared/pull/42")]
     public void AreDependenciesRegistered()
     {
         DependencyInjectionValidation.IsDependencyResolutionCoherent(s =>
@@ -30,6 +29,6 @@ public class DependencyRegistrationTests
 
                 s.AddScoped<DependencyUpdater>();
             },
-            out string message).Should().BeTrue(message);
+            out var message).Should().BeTrue(message);
     }
 }

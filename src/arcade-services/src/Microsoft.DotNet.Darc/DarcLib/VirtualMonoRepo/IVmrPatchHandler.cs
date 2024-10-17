@@ -15,11 +15,12 @@ public interface IVmrPatchHandler
     Task ApplyPatch(
         VmrIngestionPatch patch,
         NativePath targetDirectory,
+        bool removePatchAfter,
         CancellationToken cancellationToken);
 
     Task<List<VmrIngestionPatch>> CreatePatches(
         SourceMapping mapping,
-        NativePath repoPath,
+        ILocalGitRepo clone,
         string sha1,
         string sha2,
         NativePath destDir,
@@ -30,7 +31,7 @@ public interface IVmrPatchHandler
         string patchName,
         string sha1,
         string sha2,
-        string? path,
+        UnixPath? path,
         IReadOnlyCollection<string>? filters,
         bool relativePaths,
         NativePath workingDir,

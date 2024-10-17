@@ -8,7 +8,7 @@ using System.Collections.Generic;
 namespace Microsoft.DotNet.Darc.Options;
 
 [Verb("add-subscription", HelpText = "Add a new subscription.")]
-class AddSubscriptionCommandLineOptions : CommandLineOptions
+internal class AddSubscriptionCommandLineOptions : CommandLineOptions
 {
     [Option("channel", HelpText = "Name of channel to pull from.")]
     public string Channel { get; set; }
@@ -62,6 +62,12 @@ class AddSubscriptionCommandLineOptions : CommandLineOptions
 
     [Option("validate-coherency", HelpText="PR is not merged if the coherency algorithm failed.")]
     public bool ValidateCoherencyCheckMergePolicy { get; set; }
+
+    [Option("source-enabled", HelpText = "Get only source-enabled (VMR code flow) subscriptions.", Default = false)]
+    public bool SourceEnabled { get; set; }
+
+    [Option("excluded-assets", HelpText = "Semicolon-delineated list of asset filters (package name with asterisks allowed) to be excluded from source-enabled code flow.")]
+    public string ExcludedAssets { get; set; }
 
     public override Operation GetOperation()
     {
