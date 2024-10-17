@@ -2,10 +2,8 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
-using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.IO;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Azure;
@@ -30,6 +28,7 @@ namespace Microsoft.DotNet.Maestro.Client
 
         Task<IImmutableList<string>> ListRepositoriesAsync(
             int id,
+            int? withBuildsInDays = default,
             CancellationToken cancellationToken = default
         );
 
@@ -245,6 +244,7 @@ namespace Microsoft.DotNet.Maestro.Client
 
         public async Task<IImmutableList<string>> ListRepositoriesAsync(
             int id,
+            int? withBuildsInDays = default,
             CancellationToken cancellationToken = default
         )
         {
@@ -258,6 +258,10 @@ namespace Microsoft.DotNet.Maestro.Client
                 "/api/channels/{id}/repositories".Replace("{id}", Uri.EscapeDataString(Client.Serialize(id))),
                 false);
 
+            if (withBuildsInDays != default)
+            {
+                _url.AppendQuery("withBuildsInDays", Client.Serialize(withBuildsInDays));
+            }
             _url.AppendQuery("api-version", Client.Serialize(apiVersion));
 
 
@@ -597,7 +601,7 @@ namespace Microsoft.DotNet.Maestro.Client
                 "/api/channels/{channelId}/graph".Replace("{channelId}", Uri.EscapeDataString(Client.Serialize(channelId))),
                 false);
 
-            if (includeDisabledSubscriptions != default(bool))
+            if (includeDisabledSubscriptions != default)
             {
                 _url.AppendQuery("includeDisabledSubscriptions", Client.Serialize(includeDisabledSubscriptions));
             }
@@ -608,15 +612,15 @@ namespace Microsoft.DotNet.Maestro.Client
                     _url.AppendQuery("includedFrequencies", Client.Serialize(_item));
                 }
             }
-            if (includeBuildTimes != default(bool))
+            if (includeBuildTimes != default)
             {
                 _url.AppendQuery("includeBuildTimes", Client.Serialize(includeBuildTimes));
             }
-            if (days != default(int))
+            if (days != default)
             {
                 _url.AppendQuery("days", Client.Serialize(days));
             }
-            if (includeArcade != default(bool))
+            if (includeArcade != default)
             {
                 _url.AppendQuery("includeArcade", Client.Serialize(includeArcade));
             }

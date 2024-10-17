@@ -74,7 +74,7 @@ public class VmrPatchHandler : IVmrPatchHandler
     /// <returns>List of patch files that can be applied on the VMR</returns>
     public async Task<List<VmrIngestionPatch>> CreatePatches(
         SourceMapping mapping,
-        NativePath repoPath,
+        ILocalGitRepo clone,
         string sha1,
         string sha2,
         NativePath destDir,
@@ -83,7 +83,7 @@ public class VmrPatchHandler : IVmrPatchHandler
     {
         _logger.LogInformation("Creating patches for {mapping} in {path}..", mapping.Name, destDir);
 
-        var patches = await CreatePatchesRecursive(mapping, repoPath, sha1, sha2, destDir, tmpPath, new UnixPath(mapping.Name), cancellationToken);
+        var patches = await CreatePatchesRecursive(mapping, clone, sha1, sha2, destDir, tmpPath, new UnixPath(mapping.Name), cancellationToken);
 
         _logger.LogInformation("{count} patch{s} created", patches.Count, patches.Count == 1 ? string.Empty : "es");
 
@@ -92,7 +92,7 @@ public class VmrPatchHandler : IVmrPatchHandler
 
     private async Task<List<VmrIngestionPatch>> CreatePatchesRecursive(
         SourceMapping mapping,
-        NativePath repoPath,
+        ILocalGitRepo clone,
         string sha1,
         string sha2,
         NativePath destDir,
@@ -100,14 +100,15 @@ public class VmrPatchHandler : IVmrPatchHandler
         UnixPath relativePath,
         CancellationToken cancellationToken)
     {
-        if (_fileSystem.GetFileName(repoPath.Path) == ".git")
+        var repoPath = clone.Path;
+        if (_fileSystem.GetFileName(repoPath) == ".git")
         {
             repoPath = new NativePath(_fileSystem.GetDirectoryName(repoPath)!);
         }
 
         var patchName = destDir / $"{mapping.Name}-{Commit.GetShortSha(sha1)}-{Commit.GetShortSha(sha2)}.patch";
 
-        List<SubmoduleChange> submoduleChanges = await GetSubmoduleChanges(repoPath, sha1, sha2);
+        List<SubmoduleChange> submoduleChanges = await GetSubmoduleChanges(clone, sha1, sha2);
 
         var changedRecords = submoduleChanges
             .Select(c => new SubmoduleRecord(relativePath / c.Path, c.Url, c.After))
@@ -123,9 +124,11 @@ public class VmrPatchHandler : IVmrPatchHandler
             };
         }
 
-        var filters = new List<string>();
-        filters.AddRange(mapping.Include.Select(p => $":(glob,attr:!{VmrInfo.IgnoreAttribute}){p}"));
-        filters.AddRange(mapping.Exclude.Select(p => $":(exclude,glob,attr:!{VmrInfo.KeepAttribute}){p}"));
+        List<string> filters =
+        [
+            .. mapping.Include.Select(GetInclusionRule),
+            .. mapping.Exclude.Select(GetExclusionRule),
+        ];
 
         // Ignore submodules in the diff, they will be inlined via their own diffs
         if (submoduleChanges.Any())
@@ -148,7 +151,7 @@ public class VmrPatchHandler : IVmrPatchHandler
         // If current mapping hosts VMR's non-src/ content, synchronize it too
         // We only do it when processing the root mapping, not its submodules
         var relativeRepoPath = VmrInfo.GetRelativeRepoSourcesPath(mapping);
-        int i = 1;
+        var i = 1;
         foreach (var (source, destination) in _vmrInfo.AdditionalMappings.Where(m => m.Source.StartsWith(relativeRepoPath)))
         {
             var relativeClonePath = source.Substring(relativeRepoPath.Length + 1);
@@ -157,17 +160,17 @@ public class VmrPatchHandler : IVmrPatchHandler
 
             patchName = destDir / $"{(destination != null ? destination.Replace('/', '_') : "root")}-{Commit.GetShortSha(sha1)}-{Commit.GetShortSha(sha2)}-{i++}.patch";
 
-            string path = ".";
+            var path = UnixPath.CurrentDir;
 
             // We take the content path from the VMR config and map it onto the cloned repo
             var contentDir = repoPath / relativeClonePath;
 
-            string fileName = _fileSystem.GetFileName(source) ?? throw new ArgumentNullException(nameof(source));
+            var fileName = _fileSystem.GetFileName(source) ?? throw new ArgumentNullException(nameof(source));
 
             if (_fileSystem.FileExists(contentDir)
                 || (destination != null && _fileSystem.FileExists(_vmrInfo.VmrPath / destination / fileName)))
             {
-                path = fileName;
+                path = new UnixPath(fileName);
                 
                 var relativeCloneDir = _fileSystem.GetDirectoryName(relativeClonePath)
                     ?? throw new Exception($"Invalid source path {source} in mapping.");
@@ -240,7 +243,11 @@ public class VmrPatchHandler : IVmrPatchHandler
     /// <summary>
     /// Applies a given patch file onto given mapping's subrepository.
     /// </summary>
-    public async Task ApplyPatch(VmrIngestionPatch patch, NativePath targetDirectory, CancellationToken cancellationToken)
+    public async Task ApplyPatch(
+        VmrIngestionPatch patch,
+        NativePath targetDirectory,
+        bool removePatchAfter,
+        CancellationToken cancellationToken)
     {
         var info = _fileSystem.GetFileInfo(patch.Path);
         if (!info.Exists)
@@ -258,7 +265,7 @@ public class VmrPatchHandler : IVmrPatchHandler
         _logger.LogInformation("Applying patch {patchPath} to {path}...", patch.Path, patch.ApplicationPath ?? "root of the VMR");
 
         // This will help ignore some CR/LF issues (e.g. files with both endings)
-        (await _processManager.ExecuteGit(targetDirectory, new[] { "config", "apply.ignoreWhitespace", "change" }, cancellationToken: cancellationToken))
+        (await _processManager.ExecuteGit(targetDirectory, ["config", "apply.ignoreWhitespace", "change"], cancellationToken: cancellationToken))
             .ThrowIfFailed("Failed to set git config whitespace settings");
 
         var args = new List<string>
@@ -291,10 +298,20 @@ public class VmrPatchHandler : IVmrPatchHandler
         args.Add(patch.Path);
 
         var result = await _processManager.ExecuteGit(targetDirectory, args, cancellationToken: CancellationToken.None);
-        result.ThrowIfFailed($"Failed to apply the patch for {patch.ApplicationPath ?? "/"}");
+
+        if (!result.Succeeded)
+        {
+            throw new PatchApplicationFailedException(patch, result);
+        }
+
         _logger.LogDebug("{output}", result.ToString());
 
-        await ResetWorkingTreeDirectory(targetDirectory, patch.ApplicationPath ?? new UnixPath("."));
+        if (removePatchAfter)
+        {
+            _fileSystem.DeleteFile(patch.Path);
+        }
+
+        await _localGitClient.ResetWorkingTree(targetDirectory, patch.ApplicationPath);
     }
 
     /// <summary>
@@ -312,7 +329,7 @@ public class VmrPatchHandler : IVmrPatchHandler
             return files;
         }
 
-        var result = await _processManager.ExecuteGit(_vmrInfo.VmrPath, new string[] { "apply", "--numstat", patchPath }, cancellationToken: cancellationToken);
+        var result = await _processManager.ExecuteGit(_vmrInfo.VmrPath, ["apply", "--numstat", patchPath], cancellationToken: cancellationToken);
         result.ThrowIfFailed($"Failed to enumerate files from a patch at `{patchPath}`");
 
         foreach (var line in result.StandardOutput.Split(Environment.NewLine))
@@ -334,7 +351,7 @@ public class VmrPatchHandler : IVmrPatchHandler
         string patchName,
         string sha1,
         string sha2,
-        string? path,
+        UnixPath? path,
         IReadOnlyCollection<string>? filters,
         bool relativePaths,
         NativePath workingDir,
@@ -345,7 +362,7 @@ public class VmrPatchHandler : IVmrPatchHandler
 
         if (_fileSystem.GetFileInfo(patch.Path).Length < MaxPatchSize)
         {
-            return new() { patch };
+            return [patch];
         }
 
         _logger.LogWarning("Patch {name} targeting {path} is too large (>1GB). Repo will be split into smaller patches." +
@@ -375,7 +392,7 @@ public class VmrPatchHandler : IVmrPatchHandler
                 newPatchname,
                 sha1,
                 sha2,
-                ".",
+                UnixPath.CurrentDir,
                 filters,
                 true,
                 workingDir / dirName,
@@ -386,7 +403,7 @@ public class VmrPatchHandler : IVmrPatchHandler
         // Add a patch for each file
         for (var i = 0; i < files.Length; i++)
         {
-            var fileName = files[i].Substring(workingDir.Length + 1);
+            var fileName = new UnixPath(files[i].Substring(workingDir.Length + 1));
             var newPatchname = $"{patchName}.{i + directories.Length + 1}";
 
             patch = await CreatePatch(
@@ -395,7 +412,7 @@ public class VmrPatchHandler : IVmrPatchHandler
                 sha2,
                 fileName,
                 // Ignore all files except the one we're currently processing
-                filters?.Except(new[] { ":(glob,attr:!vmr-ignore)**/*" }).ToArray(),
+                [.. filters?.Except([GetInclusionRule("**/*")]) ],
                 true,
                 workingDir,
                 applicationPath,
@@ -420,7 +437,7 @@ public class VmrPatchHandler : IVmrPatchHandler
         string patchName,
         string sha1,
         string sha2,
-        string? path,
+        UnixPath? path,
         IReadOnlyCollection<string>? filters,
         bool relativePaths,
         NativePath workingDir,
@@ -468,12 +485,11 @@ public class VmrPatchHandler : IVmrPatchHandler
     /// <summary>
     /// Finds all changes that happened for submodules between given commits.
     /// </summary>
-    /// <param name="repoPath">Path to the local git repository</param>
     /// <returns>A pair of submodules (state in SHA1, state in SHA2) where additions/removals are marked by EmptyGitObject</returns>
-    private async Task<List<SubmoduleChange>> GetSubmoduleChanges(string repoPath, string sha1, string sha2)
+    private static async Task<List<SubmoduleChange>> GetSubmoduleChanges(ILocalGitRepo clone, string sha1, string sha2)
     {
-        List<GitSubmoduleInfo> submodulesBefore = await _localGitClient.GetGitSubmodulesAsync(repoPath, sha1);
-        List<GitSubmoduleInfo> submodulesAfter = await _localGitClient.GetGitSubmodulesAsync(repoPath, sha2);
+        List<GitSubmoduleInfo> submodulesBefore = await clone.GetGitSubmodulesAsync(sha1);
+        List<GitSubmoduleInfo> submodulesAfter = await clone.GetGitSubmodulesAsync(sha2);
 
         var submodulePaths = submodulesBefore
             .Concat(submodulesAfter)
@@ -484,7 +500,7 @@ public class VmrPatchHandler : IVmrPatchHandler
 
         // Pair submodule state from sha1 and sha2
         // When submodule is added/removed, signal this with well known zero commit
-        foreach (string path in submodulePaths)
+        foreach (var path in submodulePaths)
         {
             GitSubmoduleInfo? before = submodulesBefore.FirstOrDefault(s => s.Path == path);
             GitSubmoduleInfo? after = submodulesAfter.FirstOrDefault(s => s.Path == path);
@@ -539,7 +555,7 @@ public class VmrPatchHandler : IVmrPatchHandler
         CancellationToken cancellationToken)
     {
         var checkoutCommit = change.Before == Constants.EmptyGitObject ? change.After : change.Before;
-        var clonePath = await _cloneManager.PrepareClone(change.Url, checkoutCommit, cancellationToken);   
+        var clonePath = await _cloneManager.PrepareCloneAsync(change.Url, checkoutCommit, cancellationToken);   
 
         // We are only interested in filters specific to submodule's path
         ImmutableArray<string> GetSubmoduleFilters(IReadOnlyCollection<string> filters)
@@ -586,33 +602,6 @@ public class VmrPatchHandler : IVmrPatchHandler
             cancellationToken);
     }
 
-    private async Task ResetWorkingTreeDirectory(NativePath repoPath, UnixPath relativePath)
-    {
-        // After we apply the diff to the index, working tree won't have the files so they will be missing
-        // We have to reset working tree to the index then
-        // This will end up having the working tree match what is staged
-        _logger.LogInformation("Cleaning the working tree directory {path}...", repoPath/relativePath);
-        var args = new string[] { "checkout", relativePath };
-        var result = await _processManager.ExecuteGit(repoPath, args, cancellationToken: CancellationToken.None);
-        
-        if (result.Succeeded)
-        {
-            _logger.LogDebug("{output}", result.ToString());
-        }
-        else if (result.StandardError.Contains($"pathspec '{relativePath}' did not match any file(s) known to git"))
-        {
-            // In case a submodule was removed, it won't be in the index anymore and the checkout will fail
-            // We can just remove the working tree folder then
-            _logger.LogInformation("A removed submodule detected. Removing files at {path}...", relativePath);
-            _fileSystem.DeleteDirectory(repoPath / relativePath, true);
-        }
-
-        // Also remove untracked files (in case files were removed in index)
-        args = new string[] { "clean", "-df", relativePath };
-        result = await _processManager.ExecuteGit(repoPath, args, cancellationToken: CancellationToken.None);
-        result.ThrowIfFailed("Failed to clean the working tree!");
-    }
-
     public IReadOnlyCollection<string> GetVmrPatches(string mappingName)
     {
         if (_vmrInfo.PatchesPath is null)
@@ -628,6 +617,10 @@ public class VmrPatchHandler : IVmrPatchHandler
 
         return _fileSystem.GetFiles(mappingPatchesPath);
     }
+
+    public static string GetInclusionRule(string path) => $":(glob,attr:!{VmrInfo.IgnoreAttribute}){path}";
+
+    public static string GetExclusionRule(string path) => $":(exclude,glob,attr:!{VmrInfo.KeepAttribute}){path}";
 
     private record SubmoduleChange(string Name, string Path, string Url, string Before, string After);
 }
