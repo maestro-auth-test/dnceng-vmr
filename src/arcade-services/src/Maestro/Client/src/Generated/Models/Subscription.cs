@@ -9,21 +9,23 @@ namespace Microsoft.DotNet.Maestro.Client.Models
 {
     public partial class Subscription
     {
-        public Subscription(Guid id, bool enabled, string sourceRepository, string targetRepository, string targetBranch, string pullRequestFailureNotificationTags)
+        public Subscription(Guid id, bool enabled, bool sourceEnabled, string sourceRepository, string targetRepository, string targetBranch, string pullRequestFailureNotificationTags, IImmutableList<string> excludedAssets)
         {
             Id = id;
             Enabled = enabled;
+            SourceEnabled = sourceEnabled;
             SourceRepository = sourceRepository;
             TargetRepository = targetRepository;
             TargetBranch = targetBranch;
             PullRequestFailureNotificationTags = pullRequestFailureNotificationTags;
+            ExcludedAssets = excludedAssets;
         }
 
         [JsonProperty("id")]
         public Guid Id { get; }
 
         [JsonProperty("channel")]
-        public Models.Channel Channel { get; set; }
+        public Channel Channel { get; set; }
 
         [JsonProperty("sourceRepository")]
         public string SourceRepository { get; }
@@ -35,15 +37,21 @@ namespace Microsoft.DotNet.Maestro.Client.Models
         public string TargetBranch { get; }
 
         [JsonProperty("policy")]
-        public Models.SubscriptionPolicy Policy { get; set; }
+        public SubscriptionPolicy Policy { get; set; }
 
         [JsonProperty("lastAppliedBuild")]
-        public Models.Build LastAppliedBuild { get; set; }
+        public Build LastAppliedBuild { get; set; }
 
         [JsonProperty("enabled")]
         public bool Enabled { get; }
 
+        [JsonProperty("sourceEnabled")]
+        public bool SourceEnabled { get; }
+
         [JsonProperty("pullRequestFailureNotificationTags")]
         public string PullRequestFailureNotificationTags { get; }
+
+        [JsonProperty("excludedAssets")]
+        public IImmutableList<string> ExcludedAssets { get; }
     }
 }

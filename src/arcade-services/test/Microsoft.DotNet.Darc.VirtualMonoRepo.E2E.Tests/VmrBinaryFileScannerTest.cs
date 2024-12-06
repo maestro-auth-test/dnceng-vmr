@@ -5,7 +5,6 @@ using FluentAssertions;
 using Microsoft.DotNet.DarcLib.Helpers;
 using Microsoft.DotNet.DarcLib.Models.VirtualMonoRepo;
 using NUnit.Framework;
-using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
@@ -16,7 +15,7 @@ using System.Threading.Tasks;
 namespace Microsoft.DotNet.Darc.Tests.VirtualMonoRepo;
 
 [TestFixture]
-public class VmrBinaryFileScannerTest : VmrTestsBase
+internal class VmrBinaryFileScannerTest : VmrTestsBase
 {
     [Test]
     public async Task VmrBinaryFileScannerTests()
@@ -55,7 +54,7 @@ public class VmrBinaryFileScannerTest : VmrTestsBase
 
     protected override async Task CopyReposForCurrentTest()
     {
-        await CopyRepoAndCreateVersionDetails(CurrentTestDirectory, Constants.ProductRepoName);
+        await CopyRepoAndCreateVersionFiles(Constants.ProductRepoName);
     }
 
     protected override async Task CopyVmrForCurrentTest()
@@ -64,20 +63,20 @@ public class VmrBinaryFileScannerTest : VmrTestsBase
 
         var sourceMappings = new SourceMappingFile()
         {
-            Mappings = new List<SourceMappingSetting>
-            {
+            Mappings =
+            [
                 new SourceMappingSetting
                 {
                     Name = Constants.ProductRepoName,
                     DefaultRemote = ProductRepoPath
                 }
-            }
+            ]
         };
 
-        sourceMappings.Defaults.Exclude = new[]
-        {
+        sourceMappings.Defaults.Exclude =
+        [
             "**/*.dll"
-        };
+        ];
 
         await WriteSourceMappingsInVmr(sourceMappings);
     }
