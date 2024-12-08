@@ -26,7 +26,7 @@ public abstract class EditorPopUp
     [JsonIgnore]
     public IList<Line> Contents { get; set; }
 
-    public IList<Line> OnClose(string path)
+    public static IList<Line> OnClose(string path)
     {
         string[] updatedFileContents = File.ReadAllLines(path);
         return GetContentValues(updatedFileContents);
@@ -34,9 +34,9 @@ public abstract class EditorPopUp
 
     public abstract int ProcessContents(IList<Line> contents);
 
-    private List<Line> GetContentValues(IEnumerable<string> contents)
+    private static List<Line> GetContentValues(IEnumerable<string> contents)
     {
-        List<Line> values = new List<Line>();
+        List<Line> values = [];
 
         foreach (string content in contents)
         {
@@ -77,8 +77,14 @@ public abstract class EditorPopUp
     ///     - Empty string if the setting starts+ends with <>
     ///     - New value if anything else.
     /// </returns>
-    protected string ParseSetting(string inputSetting, string originalSetting, bool isSecret)
+    protected static string ParseSetting(string inputSetting, string originalSetting, bool isSecret)
     {
+        //if the setting is null, trimming will throw an exception
+        if (string.IsNullOrEmpty(inputSetting))
+        {
+            return inputSetting;
+        }
+
         string trimmedSetting = inputSetting.Trim();
         if (trimmedSetting.StartsWith('<') && trimmedSetting.EndsWith('>'))
         {

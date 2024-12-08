@@ -97,4 +97,13 @@ public class DependencyDetail
     /// Information whether dependency is needed for source-build.
     /// </summary>
     public SourceBuildInfo SourceBuild { get; set; }
+
+    public void Validate()
+    {
+        const string Message = "{0} of the dependency detail record is empty";
+        _ = Version ?? throw new DarcException(string.Format(Message, nameof(Version)));
+        _ = Name ?? throw new DarcException(string.Format(Message, nameof(Name)));
+        _ = Commit ?? throw new DarcException(string.Format(Message, nameof(Commit)));
+        _ = RepoUri ?? throw new DarcException(string.Format(Message, nameof(RepoUri)));
+    }
 }
