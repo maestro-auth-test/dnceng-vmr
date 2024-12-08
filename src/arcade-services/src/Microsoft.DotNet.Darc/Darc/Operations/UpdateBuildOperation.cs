@@ -1,27 +1,27 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using Microsoft.DotNet.Darc.Helpers;
+using System;
+using System.Threading.Tasks;
 using Microsoft.DotNet.Darc.Options;
 using Microsoft.DotNet.DarcLib;
 using Microsoft.DotNet.Maestro.Client;
 using Microsoft.DotNet.Maestro.Client.Models;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using System;
-using System.Threading.Tasks;
 
 namespace Microsoft.DotNet.Darc.Operations;
 
 internal class UpdateBuildOperation : Operation
 {
-    UpdateBuildCommandLineOptions _options;
+    private readonly UpdateBuildCommandLineOptions _options;
     public UpdateBuildOperation(UpdateBuildCommandLineOptions options)
         : base(options)
     {
         _options = options;
     }
 
-    public async override Task<int> ExecuteAsync()
+    public override async Task<int> ExecuteAsync()
     {
         if (!(_options.Released ^ _options.NotReleased))
         {
@@ -31,9 +31,9 @@ internal class UpdateBuildOperation : Operation
 
         try
         {
-            IRemote remote = RemoteFactory.GetBarOnlyRemote(_options, Logger);
+            IBarApiClient barClient = Provider.GetRequiredService<IBarApiClient>();
 
-            Build updatedBuild = await remote.UpdateBuildAsync(_options.Id, new BuildUpdate { Released = _options.Released });
+            Build updatedBuild = await barClient.UpdateBuildAsync(_options.Id, new BuildUpdate { Released = _options.Released });
 
             Console.WriteLine($"Updated build {_options.Id} with new information.");
             Console.WriteLine(UxHelpers.GetTextBuildDescription(updatedBuild));
